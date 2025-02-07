@@ -43,6 +43,10 @@ export async function getPhotoUrl(req: Request, res: Response) {
     }
 
     const photo = photos[id];
+    if (!photo.photo_url) {
+      res.status(404).send('Foto no encontrada.');
+      return 
+    }
     const response = await fetch(photo.photo_url);
     const buffer = Buffer.from(await response.arrayBuffer());
 
@@ -78,6 +82,10 @@ export async function getPhotoUrl(req: Request, res: Response) {
     }
 
     // Quitar solo los acentos de photo.username y photo.title
+    if(!photo.username || !photo.title) {
+      res.status(404).send('Foto no encontrada.');
+      return
+    }
     const cleanUsername = photo.username.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const clearTitle = photo.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -124,6 +132,10 @@ export async function getPhoto(req: Request, res: Response) {
         }
 
         const photo = photos[id];
+        if (!photo.photo_url) {
+            res.status(404).send('Foto no encontrada.');
+            return 
+        }
         const response = await fetch(photo.photo_url);
         const buffer = Buffer.from(await response.arrayBuffer());
 
@@ -157,6 +169,10 @@ export async function getPhoto(req: Request, res: Response) {
             pixelData.push(row);
         }
 
+        if(!photo.username || !photo.title) {
+            res.status(404).send('Foto no encontrada.');
+            return
+        }
         const cleanUsername = photo.username.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const clearTitle = photo.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
