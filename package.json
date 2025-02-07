@@ -1,0 +1,40 @@
+{
+  "name": "pixie-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "supabase": "npx supabase gen types typescript --project-id nbelapvqvkzavdksxocb --schema public > src/types/supabase.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
+    "axios": "^1.7.9",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "fs": "^0.0.1-security",
+    "mqtt": "^5.10.3",
+    "node-fetch": "^3.3.2",
+    "node-telegram-bot-api": "^0.66.0",
+    "sharp": "^0.33.5",
+    "spotify-web-api-node": "^5.0.2",
+    "telegram-bot-api": "^2.0.1",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.1",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "@types/spotify-web-api-node": "^5.0.11",
+    "supabase": "^2.9.6",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.3"
+  }
+}
