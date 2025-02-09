@@ -9,6 +9,24 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      code_versions: {
+        Row: {
+          created_at: string
+          id: number
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          version: number
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          version?: number
+        }
+        Relationships: []
+      }
       group_suscriber: {
         Row: {
           active: boolean
