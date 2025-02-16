@@ -1,13 +1,18 @@
 // src/routes/index.ts
 import { Router } from 'express';
-import { spotifyRouter } from './spotify.routes';
-import { photosRouter } from './photos.routes';
-import { versionRouter } from './version.routes';
+import { publicRouter } from './public/public.routes';
+import { privateRouter } from "./private/private.routes";
 // Otras rutas que tengas
 
 export const mainRouter = Router();
 
-mainRouter.use('/spotify', spotifyRouter);
-mainRouter.use('/photo', photosRouter);
-mainRouter.use('/version', versionRouter);
+// Public routes
+mainRouter.use('/public', publicRouter);
+
+// Private routes
+mainRouter.use('/api', privateRouter);
+
+mainRouter.get('/', (req, res) => {
+  res.send('Hello, world!');
+});
 

@@ -3,8 +3,8 @@ import { Request, Response } from 'express';
 import sharp from 'sharp';
 import * as fs from 'fs';
 
-import { SpotifyService } from '../services/spotify.service';
-import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '../config';
+import { SpotifyService } from '../../services/spotify.service';
+import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '../../config';
 
 // Instancia global (o podrías inyectarla)
 const spotifyService = new SpotifyService(

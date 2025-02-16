@@ -1,6 +1,6 @@
 // src/controllers/versions.controller.ts
 import { Request, Response } from 'express';
-import { supabase } from '../config';
+import { supabase } from '../../config';
 
 
 export async function getLatestVersion(req: Request, res: Response) {

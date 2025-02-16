@@ -1,6 +1,6 @@
 // src/routes/spotify.routes.ts
 import { Router, Request, Response } from 'express';
-import { login, callback, cover64x64, idPlaying, me } from '../controllers/spotify.controller';
+import { login, callback, cover64x64, idPlaying, me } from '../../controllers/pixie/spotify.controller';
 // (importa idPlaying, me, etc. también)
 
 

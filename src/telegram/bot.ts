@@ -196,8 +196,6 @@ export function initTelegramBot() {
         return;
       }
 
-      console.log('groupData:', groupData);
-
       if (groupData.length === 0) {
         bot.sendMessage(chatId, 'No estás suscrito a ningún grupo.');
         return;

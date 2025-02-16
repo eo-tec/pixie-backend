@@ -1,6 +1,6 @@
 // src/routes/spotify.routes.ts
 import { Router } from 'express';
-import { getLatestVersion } from '../controllers/versions.controller';
+import { getLatestVersion } from '../../controllers/pixie/versions.controller';
 // (importa idPlaying, me, etc. también)
 
 

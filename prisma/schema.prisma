@@ -1,0 +1,158 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public"]
+}
+
+model code_versions {
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  version    Int      @db.SmallInt
+  url        String
+  comments   String?
+
+  @@schema("public")
+}
+
+model group_suscriber {
+  user_id  Int
+  active   Boolean      @default(true)
+  id       Int          @id @unique @default(autoincrement())
+  group_id Int?
+  groups   groups?      @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users    public_users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model groups {
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  deleted_at      DateTime?         @db.Timestamptz(6)
+  name            String
+  created_by      Int
+  id              Int               @id @unique @default(autoincrement())
+  group_suscriber group_suscriber[]
+  users           public_users      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  photo_groups    photo_groups[]
+
+  @@schema("public")
+}
+
+model photo_groups {
+  id       Int     @id @default(autoincrement())
+  photo_id Int
+  group_id Int?
+  groups   groups? @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  photos   photos  @relation(fields: [photo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model photos {
+  id           Int            @id @default(autoincrement())
+  created_at   DateTime       @default(dbgenerated("(now() AT TIME ZONE 'utc'::text)")) @db.Timestamptz(6)
+  photo_url    String?
+  username     String?
+  title        String?
+  user_id      Int?
+  photo_groups photo_groups[]
+  users        public_users?  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model pixie {
+  id                Int           @id @default(autoincrement())
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
+  created_by        Int?
+  brightness        Int?          @default(50)
+  pictures_on_queue Int?          @default(5)
+  name              String?
+  mac               String
+  users             public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model spotify_credentials {
+  id             Int          @id @default(autoincrement())
+  user_id        Int
+  spotify_id     String
+  spotify_secret String
+  spotify_token  String?
+  users          public_users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model urls {
+  id       Int     @id @default(autoincrement())
+  keyURL   String  @unique
+  valueURL String?
+
+  @@schema("public")
+}
+
+model public_users {
+  id                  Int                   @id @default(autoincrement())
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  deleted_at          DateTime?             @db.Timestamptz(6)
+  username            String
+  password            String?
+  telegram_id         String?
+  picture             String?
+  user_id             String?
+  group_suscriber     group_suscriber[]
+  groups              groups[]
+  photos              photos[]
+  pixie               pixie[]
+  spotify_credentials spotify_credentials[]
+  friends_sent        friends[] @relation("SentFriendships")
+  friends_received    friends[] @relation("ReceivedFriendships")
+  sent_private_photos     private_photos[] @relation("SentPrivatePhotos")
+  received_private_photos private_photos[] @relation("ReceivedPrivatePhotos")
+
+  @@map("users")
+  @@schema("public")
+}
+
+model friends {
+  id         Int       @id @default(autoincrement())
+  user_id_1  Int
+  user_id_2  Int
+  status     FriendStatus @default(pending)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user1      public_users @relation("SentFriendships", fields: [user_id_1], references: [id], onDelete: Cascade)
+  user2      public_users @relation("ReceivedFriendships", fields: [user_id_2], references: [id], onDelete: Cascade)
+
+  @@unique([user_id_1, user_id_2])
+  @@schema("public")
+}
+
+model private_photos {
+  id           Int           @id @default(autoincrement())
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  photo_url    String
+  sent_by      Int
+  received_by  Int
+  title        String?
+  deleted_at   DateTime?     @db.Timestamptz(6)
+
+  sender       public_users  @relation("SentPrivatePhotos", fields: [sent_by], references: [id], onDelete: Cascade)
+  receiver     public_users  @relation("ReceivedPrivatePhotos", fields: [received_by], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+enum FriendStatus {
+  pending
+  canceled
+  accepted
+  @@schema("public")
+}

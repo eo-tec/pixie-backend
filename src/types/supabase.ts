@@ -11,18 +11,24 @@ export type Database = {
     Tables: {
       code_versions: {
         Row: {
+          comments: string | null
           created_at: string
           id: number
+          url: string
           version: number
         }
         Insert: {
+          comments?: string | null
           created_at?: string
           id?: number
+          url: string
           version: number
         }
         Update: {
+          comments?: string | null
           created_at?: string
           id?: number
+          url?: string
           version?: number
         }
         Relationships: []
@@ -95,6 +101,39 @@ export type Database = {
           },
         ]
       }
+      photo_groups: {
+        Row: {
+          group_id: number
+          id: string
+          photo_id: string
+        }
+        Insert: {
+          group_id: number
+          id?: string
+          photo_id: string
+        }
+        Update: {
+          group_id?: number
+          id?: string
+          photo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_groups_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_groups_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "photos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       photos: {
         Row: {
           created_at: string
@@ -136,6 +175,7 @@ export type Database = {
           created_at: string
           created_by: number | null
           id: number
+          mac: string
           name: string | null
           pictures_on_queue: number | null
         }
@@ -144,6 +184,7 @@ export type Database = {
           created_at?: string
           created_by?: number | null
           id?: number
+          mac: string
           name?: string | null
           pictures_on_queue?: number | null
         }
@@ -152,6 +193,7 @@ export type Database = {
           created_at?: string
           created_by?: number | null
           id?: number
+          mac?: string
           name?: string | null
           pictures_on_queue?: number | null
         }
