@@ -15,4 +15,8 @@ mainRouter.use('/api', privateRouter);
 mainRouter.get('/', (req, res) => {
   res.send('Hello, world!');
 });
-
+ 
+// Health check route
+mainRouter.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
