@@ -17,6 +17,7 @@ interface SupabaseUser {
 // Middleware de autenticación
 export async function verifyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const token = req.headers.authorization?.split(' ')[1]; // Extraer el token del header
+  console.log('🔐 Token:', token);
 
   if (!token) {
     res.status(401).json({ error: 'No token provided' });

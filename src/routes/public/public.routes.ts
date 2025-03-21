@@ -12,4 +12,7 @@ publicRouter.use('/spotify', spotifyRouter);
 publicRouter.use('/photo', photosRouter);
 publicRouter.use('/version', versionRouter);
 publicRouter.use('/pixie', pixieRouter);
+publicRouter.get('/', (req, res) => {
+  res.send('Hello, world!');
+});
 

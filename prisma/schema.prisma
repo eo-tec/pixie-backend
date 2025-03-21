@@ -60,6 +60,7 @@ model photos {
   username     String?
   title        String?
   user_id      Int?
+  photo_pixels Json           @default("{}")            // New field for 64x64 matrix
   photo_groups photo_groups[]
   users        public_users?  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -72,6 +73,7 @@ model pixie {
   created_by        Int?
   brightness        Int?          @default(50)
   pictures_on_queue Int?          @default(5)
+  secs_between_photos Int?        @default(60)    // New field for seconds between photos
   name              String?
   mac               String
   users             public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)

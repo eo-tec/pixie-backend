@@ -3,6 +3,7 @@ import express from 'express';
 import { mainRouter } from './routes';
 import { PORT } from './config';
 import { initTelegramBot } from './telegram/bot';
+import bodyParser from 'body-parser';
 import { connectMQTT } from './mqtt/client';
 import { createServer } from 'https'
 import fs from 'fs';
@@ -19,8 +20,13 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: "10mb" })); // Aumenta el límite si las imágenes son grandes
+app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ limit: '10mb', extended: true })); 
+app.use(bodyParser.json({ limit: '10mb' }));
 
 app.use(express.json());
+
+app.use(express.static('public'));
 
 // Rutas principales
 app.use('/', mainRouter);
