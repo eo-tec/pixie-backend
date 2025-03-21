@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Cuando hagas una función para un controlador de Express nunca pongas un return así:
+return res.status(400).json({ error: 'Se requiere el user_id' });
+
+Primero tienes que poner el res.status con lo que sea, y en la línea siguiente el return

@@ -20,10 +20,10 @@ model code_versions {
 }
 
 model group_suscriber {
-  user_id  Int
   active   Boolean      @default(true)
   id       Int          @id @unique @default(autoincrement())
   group_id Int?
+  user_id  Int
   groups   groups?      @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users    public_users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -60,7 +60,7 @@ model photos {
   username     String?
   title        String?
   user_id      Int?
-  photo_pixels Json           @default("{}")            // New field for 64x64 matrix
+  photo_pixels Json           @default("{}")
   photo_groups photo_groups[]
   users        public_users?  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -68,26 +68,27 @@ model photos {
 }
 
 model pixie {
-  id                Int           @id @default(autoincrement())
-  created_at        DateTime      @default(now()) @db.Timestamptz(6)
-  created_by        Int?
-  brightness        Int?          @default(50)
-  pictures_on_queue Int?          @default(5)
-  secs_between_photos Int?        @default(60)    // New field for seconds between photos
-  name              String?
-  mac               String
-  users             public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                  Int           @id @default(autoincrement())
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  created_by          Int?
+  brightness          Int?          @default(50)
+  pictures_on_queue   Int?          @default(5)
+  name                String?
+  mac                 String
+  secs_between_photos Int?          @default(60)
+  users               public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
 
 model spotify_credentials {
-  id             Int          @id @default(autoincrement())
-  user_id        Int
-  spotify_id     String
-  spotify_secret String
-  spotify_token  String?
-  users          public_users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    Int          @id @default(autoincrement())
+  spotify_id            String
+  spotify_secret        String
+  spotify_refresh_token String?
+  user_id               Int
+  expires_at            DateTime?    @db.Timestamptz(6)
+  users                 public_users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
@@ -101,35 +102,34 @@ model urls {
 }
 
 model public_users {
-  id                  Int                   @id @default(autoincrement())
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  deleted_at          DateTime?             @db.Timestamptz(6)
-  username            String
-  password            String?
-  telegram_id         String?
-  picture             String?
-  user_id             String?
-  group_suscriber     group_suscriber[]
-  groups              groups[]
-  photos              photos[]
-  pixie               pixie[]
-  spotify_credentials spotify_credentials[]
-  friends_sent        friends[] @relation("SentFriendships")
-  friends_received    friends[] @relation("ReceivedFriendships")
-  sent_private_photos     private_photos[] @relation("SentPrivatePhotos")
-  received_private_photos private_photos[] @relation("ReceivedPrivatePhotos")
+  id                      Int                   @id @default(autoincrement())
+  created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  deleted_at              DateTime?             @db.Timestamptz(6)
+  username                String
+  password                String?
+  telegram_id             String?
+  picture                 String?
+  user_id                 String?               @unique
+  friends_sent            friends[]             @relation("SentFriendships")
+  friends_received        friends[]             @relation("ReceivedFriendships")
+  group_suscriber         group_suscriber[]
+  groups                  groups[]
+  photos                  photos[]
+  pixie                   pixie[]
+  received_private_photos private_photos[]      @relation("ReceivedPrivatePhotos")
+  sent_private_photos     private_photos[]      @relation("SentPrivatePhotos")
+  spotify_credentials     spotify_credentials[]
 
   @@map("users")
   @@schema("public")
 }
 
 model friends {
-  id         Int       @id @default(autoincrement())
+  id         Int          @id @default(autoincrement())
   user_id_1  Int
   user_id_2  Int
   status     FriendStatus @default(pending)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
   user1      public_users @relation("SentFriendships", fields: [user_id_1], references: [id], onDelete: Cascade)
   user2      public_users @relation("ReceivedFriendships", fields: [user_id_2], references: [id], onDelete: Cascade)
 
@@ -138,16 +138,15 @@ model friends {
 }
 
 model private_photos {
-  id           Int           @id @default(autoincrement())
-  created_at   DateTime      @default(now()) @db.Timestamptz(6)
-  photo_url    String
-  sent_by      Int
-  received_by  Int
-  title        String?
-  deleted_at   DateTime?     @db.Timestamptz(6)
-
-  sender       public_users  @relation("SentPrivatePhotos", fields: [sent_by], references: [id], onDelete: Cascade)
-  receiver     public_users  @relation("ReceivedPrivatePhotos", fields: [received_by], references: [id], onDelete: Cascade)
+  id          Int          @id @default(autoincrement())
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+  photo_url   String
+  sent_by     Int
+  received_by Int
+  title       String?
+  deleted_at  DateTime?    @db.Timestamptz(6)
+  receiver    public_users @relation("ReceivedPrivatePhotos", fields: [received_by], references: [id], onDelete: Cascade)
+  sender      public_users @relation("SentPrivatePhotos", fields: [sent_by], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -156,5 +155,6 @@ enum FriendStatus {
   pending
   canceled
   accepted
+
   @@schema("public")
 }

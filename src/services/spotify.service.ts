@@ -11,12 +11,6 @@ export class SpotifyService {
 
   constructor(clientId: string, clientSecret: string, redirectUri: string) {
     this.spotifyApi = new SpotifyWebApi({ clientId, clientSecret, redirectUri });
-
-    // Al instanciar, cargamos el refresh token si existe
-    const refreshToken = this.loadRefreshToken();
-    if (refreshToken) {
-      this.spotifyApi.setRefreshToken(refreshToken);
-    }
   }
 
   public getApi() {

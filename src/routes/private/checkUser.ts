@@ -29,6 +29,7 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
     const { data: user, error } = await supabase.auth.getUser(token);
     
     if (!user) {
+      console.log("🔐 Token inválido");
       res.status(401).json({ error: 'Invalid token' });
       return
     }
