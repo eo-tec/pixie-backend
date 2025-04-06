@@ -74,8 +74,6 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
     where: { user_id: pixie.users.id }
   });
 
-  console.log("🔐 Credenciales:", credentials);
-
   if (!credentials) {
     throw new Error('Usuario sin credenciales de Spotify');
   }
@@ -136,6 +134,7 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
 
 export async function cover64x64(req: Request, res: Response) {
   try {
+    console.log("🔐 cover64x64:", req.query);
     const { pixie_id } = req.query;
 
     if (!pixie_id) {
@@ -290,6 +289,8 @@ export async function saveCredentials(req: Request, res: Response) {
   try {
     const { spotify_id, spotify_refresh_token, user_id } = req.body;
 
+    console.log("🔐 saveCredentials", req.body);
+
     if (!spotify_id || !spotify_refresh_token || !user_id) {
       res.status(400).json({ error: 'Faltan parámetros requeridos' });
       return;
@@ -301,6 +302,8 @@ export async function saveCredentials(req: Request, res: Response) {
         user_id: user_id,
       },
     });
+
+    console.log("🔐 user", user);
     
     if (!user) {
       res.status(404).json({ error: 'Usuario no encontrado' });
@@ -313,6 +316,8 @@ export async function saveCredentials(req: Request, res: Response) {
         user_id: user.id,
       },
     });
+
+    console.log("🔐 existingCredentials", existingCredentials);
 
     let credentials;
     if (existingCredentials) {
@@ -337,6 +342,8 @@ export async function saveCredentials(req: Request, res: Response) {
         },
       });
     }
+
+    console.log("🔐 credentials", credentials);
 
     res.json({ message: 'Credenciales guardadas correctamente', credentials });
   } catch (err) {

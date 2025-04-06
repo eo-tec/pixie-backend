@@ -103,6 +103,7 @@ export async function getPhotosFromUser(req: AuthenticatedRequest, res: Response
 
 export async function postPhoto(req: Request, res: Response) {
     try {
+        console.log("Empezando postPhoto");
         const { userId, title, photoFile } = req.body;
 
         console.log("📸 Subiendo foto:", title);

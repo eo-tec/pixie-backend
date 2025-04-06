@@ -1,6 +1,5 @@
 // src/controllers/versions.controller.ts
 import { Request, Response } from 'express';
-import { supabase } from '../../config';
 import prisma from '../../services/prisma';
 
 export const addPixie = async (req: Request, res: Response) => {

@@ -46,6 +46,7 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
     })
 
     if (!userSupa) {
+      console.log("🔐 Usuario no encontrado en la base de datos");
       res.status(403).json({ error: 'User not found in database' });
       return
     }

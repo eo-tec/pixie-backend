@@ -2,7 +2,6 @@
 import { Request, Response } from "express";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { supabase } from "../../config";
 
 const prisma = new PrismaClient();
 

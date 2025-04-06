@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { getPhotosFromUser, postPhoto } from '../../controllers/app/photos.controller';
 import { verifyAuth } from './checkUser';
 import { Request, Response } from 'express';
+import { getUser } from '../../controllers/app/user.controller';
+import { getPixiesByUser, setPixie } from '../../controllers/app/pixie.controller';
 // Otras rutas que tengas
 
 export const privateRouter = Router();
@@ -15,3 +17,8 @@ privateRouter.get('/', (req: Request, res: Response) => {
 
 privateRouter.get('/photos-by-user', getPhotosFromUser);
 privateRouter.post('/post-photo', postPhoto);
+
+privateRouter.get('/me', getUser);
+
+privateRouter.get('/pixies', getPixiesByUser);
+privateRouter.post('/set_pixie', setPixie);

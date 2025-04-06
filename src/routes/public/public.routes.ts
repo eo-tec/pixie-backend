@@ -4,7 +4,6 @@ import { spotifyRouter } from './spotify.routes';
 import { photosRouter } from './photos.routes';
 import { versionRouter } from './version.routes';
 import { pixieRouter } from './pixie.routes';
-// Otras rutas que tengas
 
 export const publicRouter = Router();
 

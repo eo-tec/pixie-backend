@@ -21,17 +21,19 @@ export const connectMQTT = () => {
   });
 };
 
-export const publishToMQTT = (topic: string, message: string) => {
+export const publishToMQTT = (topic: string, message: string | object) => {
   if (!client || !client.connected) {
     console.error('⚠️ No se puede publicar en MQTT: Cliente no conectado');
     return;
   }
 
-  client.publish(topic, message, { qos: 1 }, (err) => {
+  const messageToSend = typeof message === 'string' ? message : JSON.stringify(message);
+
+  client.publish(topic, messageToSend, { qos: 1 }, (err) => {
     if (err) {
       console.error('❌ Error publicando en MQTT:', err);
     } else {
-      console.log(`📤 Mensaje enviado a ${MQTT_TOPIC}:`, message);
+      console.log(`📤 Mensaje enviado a ${topic}:`, messageToSend);
     }
   });
 };
