@@ -6,7 +6,7 @@
     "dev": "set \"NODE_ENV=developmenta\" && ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-    "supabase": "npx supabase gen types typescript --project-id nbelapvqvkzavdksxocb --schema public > src/types/supabase.ts"
+    "prisma:generate": "npx prisma generate"
   },
   "keywords": [],
   "author": "",
