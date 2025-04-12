@@ -104,7 +104,7 @@ export async function getPhotosFromUser(req: AuthenticatedRequest, res: Response
 export async function postPhoto(req: Request, res: Response) {
     try {
         console.log("Empezando postPhoto");
-        const { userId, title, photoFile } = req.body;
+        const { userId, title, photoFile, usersId } = req.body;
 
         console.log("📸 Subiendo foto:", title);
         if (!userId || !photoFile) {
@@ -170,11 +170,24 @@ export async function postPhoto(req: Request, res: Response) {
             },
         });
 
+        // Añadir registros en photo_visible_by_users para cada usuario
+        if (usersId && Array.isArray(usersId)) {
+            for (const visibleUserId of usersId) {
+                await prisma.photo_visible_by_users.create({
+                    data: {
+                        photo_id: newPhoto.id,
+                        user_id: visibleUserId,
+                        created_at: new Date()
+                    }
+                });
+            }
+        }
+
         console.log("✅ Se ha creado la foto");
         console.log(newPhoto);
         res.status(201).json(newPhoto);
     } catch (err) {
         console.error("❌ /post-photo error:", err);
         res.status(500).send("Error al subir la foto.");
-    }
+    } 
 }
