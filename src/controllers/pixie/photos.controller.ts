@@ -2,6 +2,7 @@
 import { Request, Response } from "express";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
+import { downloadFile } from "../../minio/minio";
 
 const prisma = new PrismaClient();
 
@@ -130,8 +131,13 @@ export async function getPhoto(req: Request, res: Response) {
     }
 
     console.log("Este es el url", photo?.photo_url)
-    const response = await fetch(photo?.photo_url || "");
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const fileName = photo?.photo_url?.split('/').pop() || '';
+    const fileStream = await downloadFile(fileName);
+    const chunks: Buffer[] = [];
+    for await (const chunk of fileStream) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
 
     const metadata = await sharp(buffer).metadata();
     if (metadata.width === undefined || metadata.height === undefined) {
@@ -253,8 +259,13 @@ export async function getPhotoBinary(req: Request, res: Response) {
       }
     } else {
       // Descargar, recortar y convertir la imagen
-      const response = await fetch(photo.photo_url ?? "");
-      const buffer = Buffer.from(await response.arrayBuffer());
+      const fileName = photo.photo_url?.split('/').pop() || '';
+      const fileStream = await downloadFile(fileName);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
 
       const metadata = await sharp(buffer).metadata();
       if (!metadata.width || !metadata.height) {

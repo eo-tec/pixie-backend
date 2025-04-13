@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from "@prisma/client";
-import { supabase } from '../../config';
 import { AuthenticatedRequest } from '../../routes/private/checkUser';
-import { Readable } from 'stream';
 import sharp from 'sharp';
-
+import { uploadFile } from '../../minio/minio';
 const prisma = new PrismaClient();
 
 async function photoToPixelMatrix(buffer: Buffer) {
@@ -135,32 +133,20 @@ export async function postPhoto(req: Request, res: Response) {
             .png({ quality: 80 }) // Opcional: convertir a PNG
             .toBuffer();
 
-        // 📌 Subir la imagen a Supabase Storage
-        const fileName = `${user.username}/${Date.now()}_${title}.png`;
-        const { data, error } = await supabase.storage
-            .from("photos")
-            .upload(fileName, processedImage, { contentType: "image/png" });
+        // 📌 Subir la imagen a Minio
+        const fileNameMinio = `${user.username}/${Date.now()}_${title}.png`;
+        const photoUrlMinio = await uploadFile(processedImage, fileNameMinio);
 
-        if (error) {
-            console.error("❌ Error al subir la foto:", error);
-            res.status(500).send("Error al subir la foto.");
-            return
-        }
+        console.log("📤 Foto subida a Minio");
 
-        console.log("📤 Subida:", data);
-
-        const { data: dataURL } = await supabase.storage.from("photos").getPublicUrl(data.path);
-
-        const photoUrl = dataURL.publicUrl;
-
-        console.log("🔗 URL:", photoUrl);
+        console.log("🔗 URL:", photoUrlMinio);
 
         // 📌 Guardar en la base de datos
         const newPhoto = await prisma.photos.create({
             data: {
                 user_id: user.id,
                 title: title,
-                photo_url: photoUrl,
+                photo_url: photoUrlMinio,
                 username: user.username,
                 created_at: new Date(),
                 photo_pixels: await photoToPixelMatrix(processedImage),
