@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from "@prisma/client";
 import { AuthenticatedRequest } from '../../routes/private/checkUser';
 import sharp from 'sharp';
-import { uploadFile } from '../../minio/minio';
+import { getPresignedUrl, uploadFile } from '../../minio/minio';
 const prisma = new PrismaClient();
 
 async function photoToPixelMatrix(buffer: Buffer) {
@@ -162,7 +162,7 @@ export async function postPhoto(req: Request, res: Response) {
                 await prisma.photo_visible_by_users.create({
                     data: {
                         photo_id: newPhoto.id,
-                        user_id: visibleUserId,
+                        user_id: Number(visibleUserId),
                         created_at: new Date()
                     }
                 });
@@ -170,7 +170,6 @@ export async function postPhoto(req: Request, res: Response) {
         }
 
         console.log("✅ Se ha creado la foto");
-        console.log(newPhoto);
         res.status(201).json(newPhoto);
     } catch (err) {
         console.error("❌ /post-photo error:", err);

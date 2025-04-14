@@ -9,6 +9,7 @@ import { createServer } from 'https'
 import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
+import { checkBucket } from './minio/minio';
 
 const app = express();
 
@@ -47,8 +48,5 @@ if (process.env.NODE_ENV === 'development') {
   });
   //initTelegramBot();
 }
-
-// Iniciar Telegram Bot
-
 
 connectMQTT();
