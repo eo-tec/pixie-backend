@@ -109,16 +109,17 @@ export async function getPhotosFromUser(
 }
 
 export async function imageToRGB565(buffer: Buffer) {
-    const RAW = await sharp(buffer)
-        .resize(64,64).raw().toBuffer();           // RGB888
-    const out = Buffer.alloc(64*64*2);             // 8 192 B
-    for (let i=0,j=0;i<RAW.length;i+=3,j+=2) {
-        const r = RAW[i]>>3, g = RAW[i+1]>>2, b=RAW[i+2]>>3;
-        out[j]  =(r<<3)|(g>>3);
-        out[j+1]=((g&7)<<5)|b;
-    }
-    return out;
+  const RAW = await sharp(buffer).resize(64, 64).raw().toBuffer(); // RGB888
+  const out = Buffer.alloc(64 * 64 * 2); // 8 192 B
+  for (let i = 0, j = 0; i < RAW.length; i += 3, j += 2) {
+    const r = RAW[i] >> 3,
+      g = RAW[i + 1] >> 2,
+      b = RAW[i + 2] >> 3;
+    out[j] = (r << 3) | (g >> 3);
+    out[j + 1] = ((g & 7) << 5) | b;
   }
+  return out;
+}
 
 export async function postPhoto(req: Request, res: Response) {
   try {
@@ -152,10 +153,14 @@ export async function postPhoto(req: Request, res: Response) {
       .rotate() // 🔥 Corrige la rotación automáticamente según EXIF
       .resize(500, 500) // Opcional: redimensionar
       .toBuffer();
-    
+
     // 📌 Subir la imagen a Minio
     const fileNameMinio = `${user.username}/${Date.now()}_${title}.png`;
-    const photoUrlMinio = await uploadFile(processedImage, fileNameMinio, "image/png");
+    const photoUrlMinio = await uploadFile(
+      processedImage,
+      fileNameMinio,
+      "image/png"
+    );
 
     console.log("📤 Foto subida a Minio");
 
@@ -176,6 +181,22 @@ export async function postPhoto(req: Request, res: Response) {
       },
     });
 
+    const pixies = await prisma.pixie.findMany({
+        where: {
+          created_by: user.id,
+        },
+      });
+  
+      for (const pixie of pixies) {
+        await publishToMQTT(
+          `pixie/${pixie.id}`,
+          JSON.stringify({
+            action: "update_photo",
+            id: newPhoto.id,
+          })
+        );
+      }
+
     // Añadir registros en photo_visible_by_users para cada usuario
     if (usersId && Array.isArray(usersId)) {
       for (const visibleUserId of usersId) {
@@ -186,19 +207,28 @@ export async function postPhoto(req: Request, res: Response) {
             created_at: new Date(),
           },
         });
+
+        /*const pixies = await prisma.pixie.findMany({
+            where: {
+              created_by: visibleUserId,
+            },
+          });
+          for (const pixie of pixies) {
+            await publishToMQTT(
+              `pixie/${pixie.id}`,
+              JSON.stringify({
+                action: "update_photo",
+                id: newPhoto.id,
+              })
+            );
+          }*/
       }
-    }
+    }    
 
     // Publicar en el topic pixie/visibleUserId por cada usuario visible
     if (usersId && Array.isArray(usersId)) {
       for (const visibleUserId of usersId) {
-        await publishToMQTT(
-          `pixie/visibleUserId/${visibleUserId}`,
-          JSON.stringify({
-            action: "update_photo",
-            id: newPhoto.id,
-          })
-        );
+        
       }
     }
 
