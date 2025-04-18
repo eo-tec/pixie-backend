@@ -196,7 +196,7 @@ export async function postPhoto(req: Request, res: Response) {
           `pixie/visibleUserId/${visibleUserId}`,
           JSON.stringify({
             action: "update_photo",
-            photo_id: newPhoto.id,
+            id: newPhoto.id,
           })
         );
       }
