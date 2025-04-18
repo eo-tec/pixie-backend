@@ -14,10 +14,6 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
         where: {
             id: id
         },
-        include: {
-            spotify_credentials: true,
-            pixie: true,
-        }
     });
 
     if (!user) {
@@ -27,11 +23,9 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
 
     res.status(200).json({
         user: {
-            id: user.id,
+            id: user.user_id,
             username: user.username,
-            user_id: user.user_id,
-            spotify_credentials: user.spotify_credentials,
-            pixies: user.pixie
+            picture: user.picture,
         }
     });
 }

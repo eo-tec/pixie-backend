@@ -4,8 +4,9 @@ import { getPhotosFromUser, postPhoto } from '../../controllers/app/photos.contr
 import { verifyAuth } from './checkUser';
 import { Request, Response } from 'express';
 import { getUser, getFriends } from '../../controllers/app/user.controller';
-import { getPixiesByUser, setPixie } from '../../controllers/app/pixie.controller';
+import { getPixies, setPixie, showPhoto } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
+import { usersRouter } from './users.routes';
 // Otras rutas que tengas
 
 export const privateRouter = Router();
@@ -22,7 +23,10 @@ privateRouter.post('/post-photo', postPhoto);
 privateRouter.get('/me', getUser);
 //privateRouter.get('/friends', getFriends);
 
-privateRouter.get('/pixies', getPixiesByUser);
-privateRouter.post('/set_pixie', setPixie);
+privateRouter.get('/pixies', getPixies);
+privateRouter.get('/pixie/photo/:id', showPhoto);
+privateRouter.post('/pixie', setPixie);
 
 privateRouter.use('/friends', friendsRouter);
+
+privateRouter.use('/users', usersRouter);

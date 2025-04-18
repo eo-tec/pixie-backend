@@ -16,7 +16,6 @@ export const getFriend = async (req: Request, res: Response) => {
 };
 
 export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
-  console.log("Asking for friends");
   const id = req.user?.id;
   if (!id) {
     res.status(401).json({ error: "Usuario no autenticado" });
@@ -41,7 +40,6 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
       picture: friend.user1.id === id ? friend.user2.picture : friend.user1.picture,
     },
   }));
-  console.log("Friends with status", friendsWithStatus);
   res.json(friendsWithStatus as Friend[]);
 };
 

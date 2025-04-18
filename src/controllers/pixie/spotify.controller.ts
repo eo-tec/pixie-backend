@@ -211,8 +211,6 @@ export async function idPlaying(req: Request, res: Response) {
   try {
     const { pixie_id } = req.query;
 
-    console.log("🆔 pixie_id: ", pixie_id);
-
     if (!pixie_id) {
       res.status(400).json({ error: 'Se requiere el pixie_id' });
       return;

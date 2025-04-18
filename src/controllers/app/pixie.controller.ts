@@ -2,9 +2,9 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT } from '../../mqtt/client';
+import { pixie } from "@prisma/client";
 
-
-export const getPixiesByUser = async (req: AuthenticatedRequest, res: Response) => {
+export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
   const id = req.user?.id;
   console.log("🔐 getPixiesByUser", id);
   if (!id) {
@@ -26,7 +26,8 @@ export const getPixiesByUser = async (req: AuthenticatedRequest, res: Response) 
 };
 
 export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
-  const { id, name, secs_between_photos, pictures_on_queue, brightness } = req.body;
+  console.log("🔐 setPixie", req.body);
+  const pixie : pixie = req.body;
   const userId = req.user?.id;
 
   if (!userId) {
@@ -34,7 +35,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     return;
   }
 
-  if (!id) {
+  if (!pixie.id) {
     res.status(400).json({ error: "Se requiere el id del pixie" });
     return;
   }
@@ -43,8 +44,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     // Verificar que el pixie pertenece al usuario
     const existingPixie = await prisma.pixie.findFirst({
       where: {
-        id: id,
-        created_by: userId
+        id: pixie.id,        
       }
     });
 
@@ -57,17 +57,15 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
 
     // Actualizar el pixie
     const updatedPixie = await prisma.pixie.update({
-      where: { id: id },
+      where: { id: pixie.id },
       data: {
-        name,
-        secs_between_photos,
-        pictures_on_queue,
-        brightness
+        ...pixie
       }
     });
 
     // Enviar mensaje MQTT
-    publishToMQTT(`pixie/${existingPixie.id}`, {action: "update_info"});
+    console.log("🔐 Enviando mensaje MQTT a topic", `pixie/${existingPixie.id}`);
+    publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({action: "update_info", pixie: updatedPixie}));
 
     res.status(200).json({ pixie: updatedPixie });
   } catch (error) {
@@ -75,3 +73,22 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     res.status(500).json({ error: "Error al actualizar el pixie" });
   }
 };
+
+export const showPhoto = async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  console.log("🔐 showPhoto", id);
+
+  const pixies = await prisma.pixie.findMany({
+    where: {
+      created_by: req.user?.id,
+    },
+  });
+
+  pixies.map((pixie) => { 
+    publishToMQTT(`pixie/${pixie.id}`, JSON.stringify({action: "update_photo", id}));
+  });
+  
+
+  res.status(200).json({ message: "Photo shown" });
+};
+
