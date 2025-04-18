@@ -1,28 +1,28 @@
 // src/controllers/versions.controller.ts
 import { Request, Response } from 'express';
-import { supabase } from '../../config';
+import prisma from '../../services/prisma';
+import { getPresignedUrlBin } from '../../minio/minio';
 
 
 export async function getLatestVersion(req: Request, res: Response) {
   try {
-    const { data: versions, error } = await supabase
-      .from('code_versions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const version = await prisma.code_versions.findFirst({
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
 
-    if (error) {
-      console.error('Error al obtener la última versión:', error.message);
-      res.status(500).send('Error al obtener la última versión.');
-      return;
-    }
-
-    if (!versions || versions.length === 0) {
+    if (!version) {
       res.status(404).send('Versión no encontrada.');
       return;
     }
 
-    res.json(versions[0]);
+    const url = await getPresignedUrlBin(version.url);
+
+    res.json({
+      ...version,
+      url,
+    });
   } catch (err) {
     console.error('/get-latest-version error:', err);
     res.status(500).send('Error al procesar la solicitud.');

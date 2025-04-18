@@ -2,7 +2,7 @@
 import { Request, Response } from "express";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { downloadFile } from "../../minio/minio";
+import { checkFile, downloadFile, uploadFile } from "../../minio/minio";
 
 const prisma = new PrismaClient();
 
@@ -242,38 +242,54 @@ export async function getPhotoBinary(req: Request, res: Response) {
     return;
   }
   try {
-    const fileName = photo.photo_url.split("/");
-    const fileNameMinio =
-      fileName[fileName.length - 2] + "/" + fileName[fileName.length - 1];
-    const fileStream = await downloadFile(fileNameMinio);
-    const chunks: Buffer[] = [];
-    for await (const chunk of fileStream) {
-      chunks.push(chunk);
-    }
-    const buffer = Buffer.concat(chunks);
+    const fileNameMinio = photo.photo_url;
+    const fileNameMinioBin = fileNameMinio + ".bin";
+    console.log("fileNameMinioBin", fileNameMinioBin);
+    const fileExists = await checkFile(fileNameMinioBin);
 
-    const rgbBuffer = await sharp(buffer)
-      .resize(64, 64)
-      .removeAlpha() // evitar canal alpha
-      .raw()
-      .toBuffer();
-    
-    const title = photo.title || "Sin título";
-    const username = photo.username || "Anónimo";
-
+    const title = photo.title || "";
+    const username = photo.username || "";
     const titleBuf = Buffer.from(title, "utf-8");
     const usernameBuf = Buffer.from(username, "utf-8");
-
     const header = Buffer.alloc(4);
     header.writeUInt16BE(titleBuf.length, 0);
     header.writeUInt16BE(usernameBuf.length, 2);
 
-    const finalBuffer = Buffer.concat([
-      header,
-      titleBuf,
-      usernameBuf,
-      rgbBuffer,
-    ]);
+    let finalBuffer;
+    if (fileExists) {
+      // Si existe el archivo binario, lo descargamos y enviamos directamente
+      console.log("Descargando archivo binario");
+      const fileStream = await downloadFile(fileNameMinioBin);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      finalBuffer = Buffer.concat(chunks);
+    } else {
+      // Si no existe, procesamos la imagen y creamos el archivo binario
+      const fileStream = await downloadFile(fileNameMinio);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      const rgbBuffer = await sharp(buffer)
+        .resize(64, 64)
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+
+      finalBuffer = Buffer.concat([
+        header,
+        titleBuf,
+        usernameBuf,
+        rgbBuffer,
+      ]);
+
+      // Subimos el archivo binario procesado a MinIO
+      await uploadFile(finalBuffer, fileNameMinioBin, 'application/octet-stream');
+    }
 
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", finalBuffer.length.toString());

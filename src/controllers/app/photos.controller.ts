@@ -2,10 +2,8 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import sharp from "sharp";
-import zlib from "zlib";
-import { getPresignedUrl, uploadFile } from "../../minio/minio";
+import { uploadFile } from "../../minio/minio";
 import { publishToMQTT } from "../../mqtt/client";
-import fs from "fs";
 const prisma = new PrismaClient();
 
 async function photoToPixelMatrix(buffer: Buffer) {
@@ -151,7 +149,8 @@ export async function postPhoto(req: Request, res: Response) {
 
     const processedImage = await sharp(fileBuffer)
       .rotate() // 🔥 Corrige la rotación automáticamente según EXIF
-      .resize(500, 500) // Opcional: redimensionar
+      .resize(300, 300) // Opcional: redimensionar
+      .png({ quality: 90 })
       .toBuffer();
 
     // 📌 Subir la imagen a Minio
@@ -171,7 +170,7 @@ export async function postPhoto(req: Request, res: Response) {
       data: {
         user_id: user.id,
         title: title,
-        photo_url: photoUrlMinio,
+        photo_url: fileNameMinio,
         username: user.username,
         created_at: new Date(),
         photo_pixels: await photoToPixelMatrix(processedImage),

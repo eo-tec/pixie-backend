@@ -70,11 +70,34 @@ export const downloadFile = async (fileName: string) => {
   return fileStream;
 };
 
+export const checkFile = async (fileName: string) => {
+  try{
+    const fileExists = await minioClient.statObject(
+      process.env.MINIO_BUCKET || "photos",
+      fileName
+    );
+    // devuelve verdadero si existe
+    return fileExists;
+  } catch (error) {
+    return false;
+  }
+};
+
 // Function to get presigned url
 export const getPresignedUrl = async (fileName: string) => {
   const url = await minioClient.presignedUrl(
     "GET",
     process.env.MINIO_BUCKET || "photos",
+    fileName,
+    3600
+  );
+  return url;
+};
+
+export const getPresignedUrlBin = async (fileName: string) => {
+  const url = await minioClient.presignedUrl(
+    "GET",
+    "versions",
     fileName,
     3600
   );
