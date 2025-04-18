@@ -106,7 +106,11 @@ export async function getPhoto(req: Request, res: Response) {
     const photo = photos[id % photos.length];
 
     // Verificar si photo_pixels existe y tiene contenido
-    if (photo.photo_pixels && Array.isArray(photo.photo_pixels) && photo.photo_pixels.length > 0) {
+    if (
+      photo.photo_pixels &&
+      Array.isArray(photo.photo_pixels) &&
+      photo.photo_pixels.length > 0
+    ) {
       const cleanUsername = photo.username
         ? photo.username.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
         : "";
@@ -130,8 +134,8 @@ export async function getPhoto(req: Request, res: Response) {
       return;
     }
 
-    console.log("Este es el url", photo?.photo_url)
-    const fileName = photo?.photo_url?.split('/').pop() || '';
+    console.log("Este es el url", photo?.photo_url);
+    const fileName = photo?.photo_url?.split("/").pop() || "";
     const fileStream = await downloadFile(fileName);
     const chunks: Buffer[] = [];
     for await (const chunk of fileStream) {
@@ -183,7 +187,7 @@ export async function getPhoto(req: Request, res: Response) {
     // Guardar los píxeles procesados en la base de datos
     await prisma.photos.update({
       where: { id: photo.id },
-      data: { photo_pixels: pixelData }
+      data: { photo_pixels: pixelData },
     });
 
     const cleanUsername = photo.username
@@ -213,132 +217,69 @@ export async function getPhoto(req: Request, res: Response) {
   }
 }
 
-export async function getPhotoBinary(req: Request, res: Response) {
-  const id = parseInt(String(req.query.id), 10);
-  if (isNaN(id) || id < 0) {
-    res.status(400).send('Error: parámetro "id" no válido.');
-    return;
-  }
-
-  try {
+async function getPhotoFromIndexId(index: number, id: number) {
+  if (!isNaN(id) && id >= 0) {
+    return await prisma.photos.findFirst({
+      where: {
+        id: id,
+      },
+    });
+  } else {
     const photos = await prisma.photos.findMany({
       orderBy: { created_at: "desc" },
       take: 5,
     });
-
-    const photo = photos[id % photos.length];
-    if (!photo) {
-      res.status(404).send("Foto no encontrada.");
-      return 
+    return photos[index % photos.length];
+  }
+}
+export async function getPhotoBinary(req: Request, res: Response) {
+  const id = Number(req.query.id);
+  const index = Number(req.query.index);
+  const photo = await getPhotoFromIndexId(index, id);
+  console.log("photo", photo?.photo_url);
+  if (!photo?.photo_url) {
+    res.status(404).send("Foto no encontrada.");
+    return;
+  }
+  try {
+    const fileName = photo.photo_url.split("/");
+    const fileNameMinio =
+      fileName[fileName.length - 2] + "/" + fileName[fileName.length - 1];
+    const fileStream = await downloadFile(fileNameMinio);
+    const chunks: Buffer[] = [];
+    for await (const chunk of fileStream) {
+      chunks.push(chunk);
     }
+    const buffer = Buffer.concat(chunks);
 
-    // Normalizar campos de texto
-    const cleanUsername = photo.username
-      ? photo.username.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      : "";
+    const rgbBuffer = await sharp(buffer)
+      .resize(64, 64)
+      .removeAlpha() // evitar canal alpha
+      .raw()
+      .toBuffer();
+    
+    const title = photo.title || "Sin título";
+    const username = photo.username || "Anónimo";
 
-    const clearTitle = photo.title
-      ? photo.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\n/g, "")
-      : "";
-
-    let imageData: Buffer;
-
-    if (
-      Array.isArray(photo.photo_pixels) &&
-      photo.photo_pixels.length === 64 &&
-      Array.isArray(photo.photo_pixels[0]) &&
-      photo.photo_pixels[0].length === 64
-    ) {
-      // Si ya está en la base de datos
-      imageData = Buffer.alloc(64 * 64 * 2);
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          const rgb565 = (photo.photo_pixels as number[][])[y][x];
-          imageData.writeUInt16BE(rgb565, (y * 64 + x) * 2);
-        }
-      }
-    } else {
-      // Descargar, recortar y convertir la imagen
-      const fileName = photo.photo_url?.split('/').pop() || '';
-      const fileStream = await downloadFile(fileName);
-      const chunks: Buffer[] = [];
-      for await (const chunk of fileStream) {
-        chunks.push(chunk);
-      }
-      const buffer = Buffer.concat(chunks);
-
-      const metadata = await sharp(buffer).metadata();
-      if (!metadata.width || !metadata.height) {
-        throw new Error("Dimensiones no disponibles.");
-      }
-
-      const size = Math.min(metadata.width, metadata.height);
-      const left = Math.floor((metadata.width - size) / 2);
-      const top = Math.floor((metadata.height - size) / 2);
-
-      const resizedBuffer = await sharp(buffer)
-        .extract({ left, top, width: size, height: size })
-        .resize(64, 64)
-        .ensureAlpha()
-        .raw()
-        .toBuffer();
-
-      imageData = Buffer.alloc(64 * 64 * 2);
-      const pixelData: number[][] = [];
-
-      for (let y = 0; y < 64; y++) {
-        const row: number[] = [];
-        for (let x = 0; x < 64; x++) {
-          const idx = (y * 64 + x) * 4;
-          let r = resizedBuffer[idx];
-          let g = resizedBuffer[idx + 1];
-          let b = resizedBuffer[idx + 2];
-          const a = resizedBuffer[idx + 3];
-
-          if (a === 0) {
-            r = 255;
-            g = 255;
-            b = 255;
-          }
-
-          const rgb565 =
-            ((r & 0xF8) << 8) |
-            ((g & 0xFC) << 3) |
-            (b >> 3);
-
-          imageData.writeUInt16BE(rgb565, (y * 64 + x) * 2);
-          row.push(rgb565);
-        }
-        pixelData.push(row);
-      }
-
-      // Guardar en la base de datos para futuros usos
-      await prisma.photos.update({
-        where: { id: photo.id },
-        data: { photo_pixels: pixelData },
-      });
-    }
-
-    // Construir el binario final con cabecera
-    const titleBuffer = Buffer.from(clearTitle, "utf-8");
-    const usernameBuffer = Buffer.from(cleanUsername, "utf-8");
+    const titleBuf = Buffer.from(title, "utf-8");
+    const usernameBuf = Buffer.from(username, "utf-8");
 
     const header = Buffer.alloc(4);
-    header.writeUInt16BE(titleBuffer.length, 0);
-    header.writeUInt16BE(usernameBuffer.length, 2);
+    header.writeUInt16BE(titleBuf.length, 0);
+    header.writeUInt16BE(usernameBuf.length, 2);
 
     const finalBuffer = Buffer.concat([
       header,
-      titleBuffer,
-      usernameBuffer,
-      imageData,
+      titleBuf,
+      usernameBuf,
+      rgbBuffer,
     ]);
 
     res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", finalBuffer.length.toString());
     res.send(finalBuffer);
   } catch (err) {
-    console.error("/get-photo-binary error:", err);
-    res.status(500).send("Error al procesar la imagen.");
+    console.error("Error al procesar la imagen:", err);
+    res.status(500).send("Error al generar la imagen");
   }
 }
-

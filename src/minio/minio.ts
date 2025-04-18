@@ -24,7 +24,7 @@ export const checkBucket = async () => {
 
 // Function to upload a file (Buffer) to the bucket
 // returns the url of the file
-export const uploadFile = async (file: Buffer, fileName: string) => {
+export const uploadFile = async (file: Buffer, fileName: string, contentType: string) => {
   try {
     const response = await minioClient.putObject(
       process.env.MINIO_BUCKET || "photos",
@@ -32,7 +32,7 @@ export const uploadFile = async (file: Buffer, fileName: string) => {
       file,
       file.length,
       {
-        'Content-Type': 'image/png',
+        'Content-Type': contentType,
       }
     );
     console.log("🔗 response:", response);
