@@ -49,3 +49,38 @@ export const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
 
   res.json(usersWithStatus);
 };
+
+export const newUser = async (req: AuthenticatedRequest, res: Response) => {
+  const { username, user_id } = req.body;
+  const id = req.user?.id;
+  console.log("🔐 newUser", id);
+  if (!username || !user_id) {
+    res.status(400).json({ error: "Nombre de usuario o correo electrónico no proporcionado" });
+    return;
+  }
+
+  // Comprobar si el usuario ya existe
+  const user = await prisma.public_users.findFirst({
+    where: { user_id }
+  });
+
+  if (user) {
+    res.status(400).json({ error: "Usuario ya existe" });
+    return;
+  }
+
+  const userName = await prisma.public_users.findFirst({
+    where: { username }
+  });
+
+  if (userName) {
+    res.status(400).json({ error: "Nombre de usuario ya existe" });
+    return;
+  }
+  // Crear un nuevo usuario
+  const newUser = await prisma.public_users.create({
+    data: { username, user_id }
+  });
+
+  res.json(newUser);
+};
