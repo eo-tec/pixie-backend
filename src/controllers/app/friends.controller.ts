@@ -17,6 +17,8 @@ export const getFriend = async (req: Request, res: Response) => {
 
 export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
   const id = req.user?.id;
+  console.log("🔐 getFriends", id);
+
   if (!id) {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
@@ -24,7 +26,7 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
   const friends = await prisma.friends.findMany({
     where: {
       OR: [{ user_id_1: id }, { user_id_2: id }],
-      status: FriendStatus.accepted,
+      status: { in: [FriendStatus.accepted, FriendStatus.pending] },
     },
     include: {
       user1: true,
@@ -44,17 +46,20 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id;
+  console.log("🔐 acceptFriend", userId);
+
   const { id } = req.params;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
   }
-  if (!req.user?.id) {
+  if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
   }
   const friend = await prisma.friends.update({
-    where: { id: parseInt(id) },
+    where: { user_id_1_user_id_2: { user_id_1: parseInt(id), user_id_2: userId } },
     data: { status: FriendStatus.accepted },
     include: {
       user1: true,
@@ -73,17 +78,20 @@ export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => 
 };
 
 export const declineFriend = async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id;
+  console.log("🔐 declineFriend", userId);
+
   const { id } = req.params;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
   }
-  if (!req.user?.id) {
+  if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
   }
   const friend = await prisma.friends.update({
-    where: { id: parseInt(id) },
+    where: { user_id_1_user_id_2: { user_id_1: parseInt(id), user_id_2: userId } },
     data: { status: FriendStatus.canceled },
     include: {
       user1: true,
@@ -93,9 +101,9 @@ export const declineFriend = async (req: AuthenticatedRequest, res: Response) =>
   const friendWithStatus = {
     status: friend.status,
     user: {
-      id: friend.user1.id === req.user?.id ? friend.user2.id : friend.user1.id,
-      username: friend.user1.id === req.user?.id ? friend.user2.username : friend.user1.username,
-      picture: friend.user1.id === req.user?.id ? friend.user2.picture : friend.user1.picture,
+      id: friend.user1.id === userId ? friend.user2.id : friend.user1.id,
+      username: friend.user1.id === userId ? friend.user2.username : friend.user1.username,
+      picture: friend.user1.id === userId ? friend.user2.picture : friend.user1.picture,
     },
   };
   res.json(friendWithStatus as Friend);
