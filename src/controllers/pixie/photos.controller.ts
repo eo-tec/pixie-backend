@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { checkFile, downloadFile, uploadFile } from "../../minio/minio";
+import { publishToMQTT } from "../../mqtt/client";
 
 const prisma = new PrismaClient();
 
@@ -13,7 +14,7 @@ export async function getPhoto(req: Request, res: Response) {
     return;
   }
   try {
-    /*const pixieIdParam = Array.isArray(req.query.pixieId) ? req.query.pixieId[0] : req.query.pixieId;
+    const pixieIdParam = Array.isArray(req.query.pixieId) ? req.query.pixieId[0] : req.query.pixieId;
 		if (!pixieIdParam) {
 		  res.status(400).send('Error: parámetro "pixieId" inválido.');
 		  return;
@@ -23,7 +24,7 @@ export async function getPhoto(req: Request, res: Response) {
 		  res.status(400).send('Error: parámetro "pixieId" inválido.');
 		  return;
 		}
-	  
+	  /*
 		try {
 		  // Consulta a Supabase para obtener las últimas 5 fotos subidas
 		  // 1. Obtener el usuario que creó el Pixie
@@ -96,7 +97,18 @@ export async function getPhoto(req: Request, res: Response) {
 			return
 		  }*/
 
+    const pixie = await prisma.pixie.findUnique({
+      where: {
+        id: pixieId
+      }
+    });
+
     const photos = await prisma.photos.findMany({
+      where: pixie?.created_by === 1 ? {} : {
+        user_id: {
+          not: 0
+        }
+      },
       orderBy: {
         created_at: "desc",
       },
@@ -297,5 +309,113 @@ export async function getPhotoBinary(req: Request, res: Response) {
   } catch (err) {
     console.error("Error al procesar la imagen:", err);
     res.status(500).send("Error al generar la imagen");
+  }
+}
+
+async function photoToPixelMatrix(buffer: Buffer) {
+  const metadata = await sharp(buffer).metadata();
+  if (metadata.width === undefined || metadata.height === undefined) {
+    throw new Error(
+      "Error: No se pudieron obtener las dimensiones de la imagen."
+    );
+  }
+  const size = Math.min(metadata.width, metadata.height);
+  const left = Math.floor((metadata.width - size) / 2);
+  const top = Math.floor((metadata.height - size) / 2);
+  const resizedBuffer = await sharp(buffer)
+    .extract({ left, top, width: size, height: size })
+    .resize(64, 64)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+
+  const pixelData = [];
+  for (let y = 0; y < 64; y++) {
+    const row = [];
+    for (let x = 0; x < 64; x++) {
+      const idx = (y * 64 + x) * 4;
+      let r = resizedBuffer[idx];
+      let g = resizedBuffer[idx + 1];
+      let b = resizedBuffer[idx + 2];
+      const a = resizedBuffer[idx + 3];
+
+      // If the pixel is transparent, set it to white
+      if (a === 0) {
+        r = 255;
+        g = 255;
+        b = 255;
+      }
+
+      // Convert to RGB565: 5 bits red, 6 bits green, and 5 bits blue
+      const rgb565 =
+        ((b & 0b11111000) << 8) | ((r & 0b11111100) << 3) | (g >> 3);
+      row.push(rgb565);
+    }
+    pixelData.push(row);
+  }
+  return pixelData;
+}
+
+
+export async function postPublicPhoto(req: Request, res: Response) {
+  try {
+    console.log("Empezando postPublicPhoto");
+    const { title, photoFile } = req.body;
+
+    console.log("📸 Subiendo foto:", title);
+    if (!photoFile) {
+      console.log("❌ Error: datos incompletos.");
+      res.status(400).send("Error: datos incompletos.");
+      return;
+    }
+
+    // 📌 Convertir la imagen de Base64 a Buffer
+    const fileBuffer = Buffer.from(photoFile, "base64");
+
+    const processedImage = await sharp(fileBuffer)
+      .rotate() // 🔥 Corrige la rotación automáticamente según EXIF
+      .resize(300, 300) // Opcional: redimensionar
+      .png({ quality: 90 })
+      .toBuffer();
+
+    // 📌 Subir la imagen a Minio
+    const fileNameMinio = `public/${Date.now()}_${title}.png`;
+    const photoUrlMinio = await uploadFile(
+      processedImage,
+      fileNameMinio,
+      "image/png"
+    );
+
+    console.log("📤 Foto subida a Minio");
+
+    console.log("🔗 URL:", photoUrlMinio);
+
+    // 📌 Guardar en la base de datos
+    const newPhoto = await prisma.photos.create({
+      data: {
+        user_id: 0,
+        title: title,
+        photo_url: fileNameMinio,
+        username: "",
+        created_at: new Date(),
+        photo_pixels: await photoToPixelMatrix(processedImage),
+      },
+      include: {
+        users: true,
+      },
+    });
+  
+      await publishToMQTT(
+        `pixie/3`,
+          JSON.stringify({
+            action: "update_photo",
+            id: newPhoto.id,
+        })
+      );
+
+    res.status(201).json(newPhoto);
+  } catch (err) {
+    console.error("❌ /post-photo error:", err);
+    res.status(500).send("Error al subir la foto.");
   }
 }

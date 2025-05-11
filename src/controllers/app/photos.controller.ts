@@ -70,6 +70,11 @@ export async function getPhotosFromUser(
       skip: skip,
       take: pageSize,
       distinct: ["photo_url"],
+      where: id === 1 ? {} : {
+        user_id: {
+          not: 0
+        }
+      },
       select: {
         id: true,
         created_at: true,
@@ -79,14 +84,19 @@ export async function getPhotosFromUser(
         user_id: true,
         users: true,
         photo_groups: true,
-        // Exclude photo_pixels
       },
       orderBy: {
         created_at: "desc",
       },
     });
 
-    const totalPhotos = await prisma.photos.count();
+    const totalPhotos = await prisma.photos.count({
+      where: id === 1 ? {} : {
+        user_id: {
+          not: 0
+        }
+      }
+    });
 
     if (!photos) {
       console.error("Error al obtener las fotos");
@@ -108,7 +118,7 @@ export async function getPhotosFromUser(
 
 export async function imageToRGB565(buffer: Buffer) {
   const RAW = await sharp(buffer).resize(64, 64).raw().toBuffer(); // RGB888
-  const out = Buffer.alloc(64 * 64 * 2); // 8 192 B
+  const out = Buffer.alloc(64 * 64 * 2); // 8 192 B
   for (let i = 0, j = 0; i < RAW.length; i += 3, j += 2) {
     const r = RAW[i] >> 3,
       g = RAW[i + 1] >> 2,
