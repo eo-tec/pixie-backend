@@ -1,6 +1,5 @@
 // routes/spotify.js (o donde prefieras)
 import express, { Request, Response, Router } from "express";
-import fetch from "node-fetch";
 const guessRouter = Router();
 
 const CLIENT_ID = "335726d82b904d43b50a3bd69a7d2cbe";
