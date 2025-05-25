@@ -1,9 +1,14 @@
 // routes/spotify.js (o donde prefieras)
-import express, { Request, Response, Router } from "express";
-const guessRouter = Router();
+import { Request, Response, Router } from "express";
+
+export const guessRouter = Router();
 
 const CLIENT_ID = "335726d82b904d43b50a3bd69a7d2cbe";
 const CLIENT_SECRET = "9d3264ea82774c7cafe7da3be2cff4bc";
+
+guessRouter.get("/", (req, res) => {
+  res.send("Hello, world!");
+});
 
 guessRouter.post("/token", async (req: Request, res: Response) => {
   const { code, code_verifier, redirect_uri } = req.body;
@@ -94,4 +99,4 @@ guessRouter.post("/refresh", async (req: Request, res: Response) => {
     }
   });
 
-export default guessRouter;
+

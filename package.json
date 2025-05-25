@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "set \"NODE_ENV=developmenta\" && ts-node-dev --respawn --transpile-only src/app.ts",
+    "dev": "set \"NODE_ENV=development\" && ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
-    "start": "node dist/app.js",
+    "start": "npm run build && node dist/app.js",
     "prisma:generate": "npx prisma generate"
   },
   "keywords": [],
