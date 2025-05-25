@@ -363,3 +363,110 @@ export async function postPublicPhoto(req: Request, res: Response) {
     res.status(500).send("Error al subir la foto.");
   }
 }
+
+export async function getPhotoByPixie(req: Request, res: Response) {
+  const index = Number(req.query.index);
+  const pixieIdParam = Array.isArray(req.query.pixieId)
+    ? req.query.pixieId[0]
+    : req.query.pixieId;
+
+  if (!pixieIdParam) {
+    res.status(400).send('Error: parámetro "pixieId" inválido.');
+    return;
+  }
+
+  const pixieId = parseInt(String(pixieIdParam), 10);
+  if (isNaN(pixieId) || pixieId < 0) {
+    res.status(400).send('Error: parámetro "pixieId" inválido.');
+    return;
+  }
+
+  try {
+    const pixie = await prisma.pixie.findUnique({
+      where: {
+        id: pixieId,
+      },
+    });
+
+    if (!pixie || !pixie.created_by) {
+      res.status(404).send("Error: Pixie no encontrado o no tiene propietario.");
+      return;
+    }
+
+    const photos = await prisma.photos.findMany({
+      where: {
+        OR: [
+          {
+            visible_by: {
+              some: {
+                user_id: pixie.created_by,
+              },
+            },
+          },
+          {
+            user_id: pixie.created_by,
+          },
+        ],
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+
+    const photo = photos[index % photos.length];
+    if (!photo?.photo_url) {
+      res.status(404).send("Foto no encontrada.");
+      return;
+    }
+
+    const fileNameMinio = photo.photo_url;
+    const fileNameMinioBin = fileNameMinio + ".bin";
+    const fileExists = await checkFile(fileNameMinioBin);
+
+    const title = photo.title || "";
+    const username = photo.username || "";
+    const titleBuf = Buffer.from(title, "utf-8");
+    const usernameBuf = Buffer.from(username, "utf-8");
+    const header = Buffer.alloc(4);
+    header.writeUInt16BE(titleBuf.length, 0);
+    header.writeUInt16BE(usernameBuf.length, 2);
+
+    let finalBuffer;
+    if (fileExists) {
+      const fileStream = await downloadFile(fileNameMinioBin);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      finalBuffer = Buffer.concat(chunks);
+    } else {
+      const fileStream = await downloadFile(fileNameMinio);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      const rgbBuffer = await sharp(buffer)
+        .resize(64, 64)
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+
+      finalBuffer = Buffer.concat([header, titleBuf, usernameBuf, rgbBuffer]);
+
+      await uploadFile(
+        finalBuffer,
+        fileNameMinioBin,
+        "application/octet-stream"
+      );
+    }
+
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", finalBuffer.length.toString());
+    res.send(finalBuffer);
+  } catch (err) {
+    console.error("Error al procesar la imagen:", err);
+    res.status(500).send("Error al generar la imagen");
+  }
+}
