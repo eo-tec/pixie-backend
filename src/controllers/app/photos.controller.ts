@@ -70,10 +70,19 @@ export async function getPhotosFromUser(
       skip: skip,
       take: pageSize,
       distinct: ["photo_url"],
-      where: id === 1 ? {} : {
-        user_id: {
-          not: 0
-        }
+      where: {
+        OR: [
+          {
+            visible_by: {
+              some: {
+                user_id: id,
+              },
+            },
+          },
+          {
+            user_id: id,
+          },
+        ],
       },
       select: {
         id: true,
@@ -91,11 +100,20 @@ export async function getPhotosFromUser(
     });
 
     const totalPhotos = await prisma.photos.count({
-      where: id === 1 ? {} : {
-        user_id: {
-          not: 0
-        }
-      }
+      where: {
+        OR: [
+          {
+            visible_by: {
+              some: {
+                user_id: id,
+              },
+            },
+          },
+          {
+            user_id: id,
+          },
+        ],
+      },
     });
 
     if (!photos) {
@@ -191,20 +209,20 @@ export async function postPhoto(req: Request, res: Response) {
     });
 
     const pixies = await prisma.pixie.findMany({
-        where: {
-          created_by: user.id,
-        },
-      });
-  
-      for (const pixie of pixies) {
-        await publishToMQTT(
-          `pixie/${pixie.id}`,
-          JSON.stringify({
-            action: "update_photo",
-            id: newPhoto.id,
-          })
-        );
-      }
+      where: {
+        created_by: user.id,
+      },
+    });
+
+    for (const pixie of pixies) {
+      await publishToMQTT(
+        `pixie/${pixie.id}`,
+        JSON.stringify({
+          action: "update_photo",
+          id: newPhoto.id,
+        })
+      );
+    }
 
     // Añadir registros en photo_visible_by_users para cada usuario
     if (usersId && Array.isArray(usersId)) {
@@ -232,12 +250,11 @@ export async function postPhoto(req: Request, res: Response) {
             );
           }*/
       }
-    }    
+    }
 
     // Publicar en el topic pixie/visibleUserId por cada usuario visible
     if (usersId && Array.isArray(usersId)) {
       for (const visibleUserId of usersId) {
-        
       }
     }
 

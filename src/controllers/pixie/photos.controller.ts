@@ -14,105 +14,51 @@ export async function getPhoto(req: Request, res: Response) {
     return;
   }
   try {
-    const pixieIdParam = Array.isArray(req.query.pixieId) ? req.query.pixieId[0] : req.query.pixieId;
-		if (!pixieIdParam) {
-		  res.status(400).send('Error: parámetro "pixieId" inválido.');
-		  return;
-		}
-		const pixieId = parseInt(String(pixieIdParam), 10);
-		if (isNaN(pixieId) || pixieId < 0) {
-		  res.status(400).send('Error: parámetro "pixieId" inválido.');
-		  return;
-		}
-	  /*
-		try {
-		  // Consulta a Supabase para obtener las últimas 5 fotos subidas
-		  // 1. Obtener el usuario que creó el Pixie
-		  const { data: pixieData, error: pixieError } = await supabase
-			.from('pixie')
-			.select('created_by')
-			.eq('id', pixieId)
-			.single();
-	  
-		  if (pixieError || !pixieData) {
-			console.error('Error al obtener el pixie:', pixieError?.message);
-			return;
-		  }
-	  
-		  const createdBy = pixieData.created_by;
-		  if (createdBy === null) {
-			res.status(404).send('Pixie no encontrado.');
-			return;
-		  }
-	  
-		  // 2. Obtener los grupos a los que está suscrito ese usuario
-		  const { data: groupData, error: groupError } = await supabase
-			.from('group_suscriber')
-			.select('group')
-			.eq('user', createdBy);
-	  
-		  if (groupError || !groupData || groupData.length === 0) {
-			console.error('Error al obtener los grupos:', groupError?.message);
-			return;
-		  }
-	  
-		  const groupIds = groupData.map(g => g.group);
-	  
-		  // 3. Obtener las fotos asociadas a esos grupos a través de la tabla intermedia 'photo_groups'
-		  const { data: photoGroups, error: photoGroupsError } = await supabase
-			.from('photo_groups')
-			.select('photo_id')
-			.in('group_id', groupIds);
-	  
-		  if (photoGroupsError || !photoGroups || photoGroups.length === 0) {
-			console.error('Error al obtener las fotos de los grupos:', photoGroupsError?.message);
-			return;
-		  }
-	  
-		  const photoIds = photoGroups.map(pg => pg.photo_id);
-	  
-		  // 4. Obtener las fotos usando los IDs obtenidos de 'photo_groups'
-		  const { data: photos, error: photosError } = await supabase
-			.from('photos')
-			.select('photo_url, title, username')
-			.in('id', photoIds)
-			.order('created_at', { ascending: false })
-			.limit(5);
-	  
-	  
-		  if (photosError) {
-			console.error('Error al obtener las fotos:', photosError.message);
-			return;
-		  }
-	  
-		  if (!photos || photos.length === 0) {
-			res.status(404).send('No se encontraron fotos.');
-			return;
-		  }
-	  
-		  // De esta forma nunca se va a pasar del límite de 5 fotos
-		  const photo = photos[id % photos.length];
-		  if (!photo.photo_url) {
-			res.status(404).send('Foto no encontrada.');
-			return
-		  }*/
+    const pixieIdParam = Array.isArray(req.query.pixieId)
+      ? req.query.pixieId[0]
+      : req.query.pixieId;
+    if (!pixieIdParam) {
+      res.status(400).send('Error: parámetro "pixieId" inválido.');
+      return;
+    }
+    const pixieId = parseInt(String(pixieIdParam), 10);
+    if (isNaN(pixieId) || pixieId < 0) {
+      res.status(400).send('Error: parámetro "pixieId" inválido.');
+      return;
+    }
 
     const pixie = await prisma.pixie.findUnique({
       where: {
-        id: pixieId
-      }
+        id: pixieId,
+      },
     });
 
+    if (!pixie || !pixie.created_by) {
+      res
+        .status(404)
+        .send("Error: Pixie no encontrado o no tiene propietario.");
+      return;
+    }
+
     const photos = await prisma.photos.findMany({
-      where: pixie?.created_by === 1 ? {} : {
-        user_id: {
-          not: 0
-        }
+      where: {
+        OR: [
+          {
+            visible_by: {
+              some: {
+                user_id: pixie.created_by,
+              },
+            },
+          },
+          {
+            user_id: pixie.created_by,
+          },
+        ],
       },
       orderBy: {
         created_at: "desc",
       },
-      take: 5,
+      take: 10
     });
 
     const photo = photos[id % photos.length];
@@ -292,15 +238,14 @@ export async function getPhotoBinary(req: Request, res: Response) {
         .raw()
         .toBuffer();
 
-      finalBuffer = Buffer.concat([
-        header,
-        titleBuf,
-        usernameBuf,
-        rgbBuffer,
-      ]);
+      finalBuffer = Buffer.concat([header, titleBuf, usernameBuf, rgbBuffer]);
 
       // Subimos el archivo binario procesado a MinIO
-      await uploadFile(finalBuffer, fileNameMinioBin, 'application/octet-stream');
+      await uploadFile(
+        finalBuffer,
+        fileNameMinioBin,
+        "application/octet-stream"
+      );
     }
 
     res.setHeader("Content-Type", "application/octet-stream");
@@ -356,7 +301,6 @@ async function photoToPixelMatrix(buffer: Buffer) {
   return pixelData;
 }
 
-
 export async function postPublicPhoto(req: Request, res: Response) {
   try {
     console.log("Empezando postPublicPhoto");
@@ -404,14 +348,14 @@ export async function postPublicPhoto(req: Request, res: Response) {
         users: true,
       },
     });
-  
-      await publishToMQTT(
-        `pixie/3`,
-          JSON.stringify({
-            action: "update_photo",
-            id: newPhoto.id,
-        })
-      );
+
+    await publishToMQTT(
+      `pixie/3`,
+      JSON.stringify({
+        action: "update_photo",
+        id: newPhoto.id,
+      })
+    );
 
     res.status(201).json(newPhoto);
   } catch (err) {

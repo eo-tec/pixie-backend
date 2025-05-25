@@ -25,8 +25,20 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
   }
   const friends = await prisma.friends.findMany({
     where: {
-      OR: [{ user_id_1: id }, { user_id_2: id }],
-      status: { in: [FriendStatus.accepted, FriendStatus.pending] },
+      OR: [
+        {
+          AND: [
+            { OR: [{ user_id_1: id }, { user_id_2: id }] },
+            { status: FriendStatus.accepted }
+          ]
+        },
+        {
+          AND: [
+            { user_id_2: id },
+            { status: FriendStatus.pending }
+          ]
+        }
+      ]
     },
     include: {
       user1: true,
