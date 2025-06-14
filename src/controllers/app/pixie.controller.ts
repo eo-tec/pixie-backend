@@ -92,3 +92,55 @@ export const showPhoto = async (req: AuthenticatedRequest, res: Response) => {
   res.status(200).json({ message: "Photo shown" });
 };
 
+export const activatePixie = async (req: AuthenticatedRequest, res: Response) => {
+  const { code, name } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!code) {
+    res.status(400).json({ error: "Se requiere el código del pixie" });
+    return;
+  }
+
+  if (!name) {
+    res.status(400).json({ error: "Se requiere el nombre del pixie" });
+    return;
+  }
+
+  try {
+    // Buscar el pixie con el código proporcionado
+    const pixie = await prisma.pixie.findFirst({
+      where: {
+        code: code
+      }
+    });
+
+    if (!pixie) {
+      res.status(404).json({ error: "No se encontró ningún pixie con ese código" });
+      return;
+    }
+
+    // Actualizar el pixie con el nuevo código, nombre y el usuario
+    const updatedPixie = await prisma.pixie.update({
+      where: { id: pixie.id },
+      data: {
+        code: "0000",
+        name: name,
+        created_by: userId
+      }
+    });
+
+    // Enviar mensaje MQTT
+    publishToMQTT(`pixie/${updatedPixie.id}`, JSON.stringify({action: "update_info", pixie: updatedPixie}));
+
+    res.status(200).json({ pixie: updatedPixie });
+  } catch (error) {
+    console.error("Error al activar pixie:", error);
+    res.status(500).json({ error: "Error al activar el pixie" });
+  }
+};
+
