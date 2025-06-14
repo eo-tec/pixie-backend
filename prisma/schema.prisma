@@ -1,7 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
-  binaryTargets = ["native", "windows", "linux-musl-openssl-3.0.x"]
+  binaryTargets   = ["native", "windows", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -77,6 +77,7 @@ model pixie {
   pictures_on_queue   Int?          @default(5)
   name                String?
   mac                 String
+  code                String?       @default("0000")
   secs_between_photos Int?          @default(60)
   spotify_enabled     Boolean       @default(false)
   users               public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
