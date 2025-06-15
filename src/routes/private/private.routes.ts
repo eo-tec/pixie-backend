@@ -28,6 +28,8 @@ privateRouter.get('/pixie/photo/:id', showPhoto);
 privateRouter.post('/pixie', setPixie);
 privateRouter.post('/pixie/activate', activatePixie);
 
+//privateRouter.get('/spotify/callback', exchangeCode);
+
 privateRouter.use('/friends', friendsRouter);
 
 privateRouter.use('/users', usersRouter);

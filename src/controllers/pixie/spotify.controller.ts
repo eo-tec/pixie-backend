@@ -30,6 +30,7 @@ export async function login(req: Request, res: Response) {
 
 export async function callback(req: Request, res: Response) {
   const code = req.query.code || null;
+  const user_id = req.query.state || null;
   if (!code) {
     res.status(400).json({ error: 'Falta el parámetro "code"' });
     return;
@@ -37,18 +38,33 @@ export async function callback(req: Request, res: Response) {
 
   try {
     const data = await spotifyService.getApi().authorizationCodeGrant(code as string);
+
+    console.log("Actualizando credenciales de Spotify del usuario", user_id);
+
+    if (data){
+      const spotify_credentials = await prisma.spotify_credentials.upsert({
+        where: {
+          user_id: parseInt(user_id as string),
+        },
+        update: {
+          spotify_secret: data.body.access_token,
+          spotify_refresh_token: data.body.refresh_token,
+          expires_at: new Date(Date.now() + data.body.expires_in * 1000),
+        },
+        create: {
+          spotify_id: user_id as string,
+          spotify_secret: data.body.access_token,
+          spotify_refresh_token: data.body.refresh_token,
+          expires_at: new Date(Date.now() + data.body.expires_in * 1000),
+          user_id: parseInt(user_id as string)
+        },
+      });
+
+      console.log("🔐 spotify_credentials", spotify_credentials);
+    }
+
+    res.redirect(process.env.SETTINGS_URI || "https://app.mypixelframe.com/settings");
     
-    // Mostramos los datos de la respuesta
-    res.json({
-      message: 'Autorización exitosa',
-      data: {
-        access_token: data.body.access_token,
-        refresh_token: data.body.refresh_token,
-        expires_in: data.body.expires_in,
-        token_type: data.body.token_type,
-        scope: data.body.scope
-      }
-    });
   } catch (err) {
     console.error('Error en el intercambio de tokens:', err);
     res.status(500).json({ 
