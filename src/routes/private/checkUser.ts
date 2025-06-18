@@ -27,7 +27,12 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
   try {
     // 🔥 Verificar el token en Supabase
     const { data: user, error } = await supabase.auth.getUser(token);
-    console.log('🔥 Supabase User:', user);
+    if(error) {
+      console.log('🔥 Supabase Error:', error);
+    }else{
+      console.log('🔥 Supabase User:', user);
+    }
+
     
     if (!user) {
       console.log("🔐 Token inválido");
