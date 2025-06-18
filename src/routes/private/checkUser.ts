@@ -27,6 +27,7 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
   try {
     // 🔥 Verificar el token en Supabase
     const { data: user, error } = await supabase.auth.getUser(token);
+    console.log('🔥 Supabase User:', user);
     
     if (!user) {
       console.log("🔐 Token inválido");
@@ -44,6 +45,8 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
         user_id: user.user?.id,
       }
     })
+
+    console.log('🔥 Public user:', userSupa);
 
     if (!userSupa) {
       console.log("🔐 Usuario no encontrado en la base de datos");

@@ -7,7 +7,7 @@ const prisma = new PrismaClient({
       url: process.env.DATABASE_URL,
     },
   },
-  log: ['query', 'info', 'warn', 'error'],
+  log: ['info', 'warn', 'error'],
 });
 
 (BigInt.prototype as any).toJSON = function () {
