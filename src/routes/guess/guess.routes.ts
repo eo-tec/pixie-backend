@@ -1,5 +1,6 @@
 // routes/spotify.js (o donde prefieras)
 import { Request, Response, Router } from "express";
+import { SPOTIFY_REDIRECT_URI } from "../../config";
 
 export const guessRouter = Router();
 
@@ -31,7 +32,7 @@ guessRouter.get("/callback", async (req: Request, res: Response) => {
   const params = new URLSearchParams();
   params.append("grant_type", "authorization_code");
   params.append("code", code as string);
-  params.append("redirect_uri", "http://127.0.0.1:3000/guess/callback");
+  params.append("redirect_uri", SPOTIFY_REDIRECT_URI);
   params.append("client_id", CLIENT_ID);
   params.append("code_verifier", code_verifier);
 
