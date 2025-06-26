@@ -11,6 +11,7 @@ export const BUCKET_NAME = process.env.BUCKET_NAME || '';
 export const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
 export const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
 export const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || '';
+export const GUESS_SPOTIFY_REDIRECT_URI = process.env.GUESS_SPOTIFY_REDIRECT_URI || '';
 
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
