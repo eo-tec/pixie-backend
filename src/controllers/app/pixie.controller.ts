@@ -144,3 +144,27 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
   }
 };
 
+export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  console.log("🔄 resetPixie", id);
+
+  const pixieId = parseInt(id, 10);
+  if (isNaN(pixieId)) {
+    res.status(400).json({ error: "ID de pixie inválido" });
+    return;
+  }
+
+  try {
+    // Enviar mensaje MQTT para reset de fábrica
+    publishToMQTT(`pixie/${pixieId}`, JSON.stringify({action: "factory_reset"}));
+    
+    res.status(200).json({ 
+      message: "Comando de reset enviado", 
+      pixie_id: pixieId 
+    });
+  } catch (error) {
+    console.error("Error al enviar comando de reset:", error);
+    res.status(500).json({ error: "Error al enviar comando de reset" });
+  }
+};
+
