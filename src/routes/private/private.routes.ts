@@ -7,6 +7,7 @@ import { getUser, getFriends } from '../../controllers/app/user.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
+import { drawingRouter } from './drawing.routes';
 // Otras rutas que tengas
 
 export const privateRouter = Router();
@@ -34,3 +35,6 @@ privateRouter.post('/pixie/reset/:id', resetPixie);
 privateRouter.use('/friends', friendsRouter);
 
 privateRouter.use('/users', usersRouter);
+
+// Drawing routes
+privateRouter.use('/', drawingRouter);

@@ -70,17 +70,19 @@ model photos {
 }
 
 model pixie {
-  id                  Int           @id @default(autoincrement())
-  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  id                  Int                @id @default(autoincrement())
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
   created_by          Int?
-  brightness          Int?          @default(50)
-  pictures_on_queue   Int?          @default(5)
+  brightness          Int?               @default(50)
+  pictures_on_queue   Int?               @default(5)
   name                String?
   mac                 String
-  code                String?       @default("0000")
-  secs_between_photos Int?          @default(60)
-  spotify_enabled     Boolean       @default(false)
-  users               public_users? @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  code                String?            @default("0000")
+  secs_between_photos Int?               @default(60)
+  spotify_enabled     Boolean            @default(false)
+  users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  drawings            drawings[]
+  drawing_sessions    drawing_sessions[]
 
   @@schema("public")
 }
@@ -173,6 +175,34 @@ enum FriendStatus {
   pending
   canceled
   accepted
+
+  @@schema("public")
+}
+
+model drawings {
+  id               Int                @id @default(autoincrement())
+  pixie_id         Int
+  user_id          String
+  name             String
+  pixel_data       Json
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  pixie            pixie              @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
+  drawing_sessions drawing_sessions[]
+
+  @@schema("public")
+}
+
+model drawing_sessions {
+  id           Int          @id @default(autoincrement())
+  pixie_id     Int
+  drawing_id   Int?
+  is_active    Boolean      @default(true)
+  participants Json
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime     @default(now()) @db.Timestamptz(6)
+  pixie        pixie        @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
+  drawing      drawings?    @relation(fields: [drawing_id], references: [id], onDelete: SetNull)
 
   @@schema("public")
 }
