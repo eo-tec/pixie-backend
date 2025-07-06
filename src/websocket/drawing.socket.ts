@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { supabase } from '../config';
 import prisma from '../services/prisma';
-import { publishDrawingCommand } from '../mqtt/drawing.mqtt';
+import { publishDrawingCommand, exitDrawingMode } from '../mqtt/drawing.mqtt';
 import { DrawingCommand, DrawingSession } from '../types/drawing.types';
 import { rateLimiter } from '../utils/rate-limiter';
 
@@ -91,7 +91,7 @@ export const initDrawingSocket = (io: Server) => {
           return;
         }
 
-        const { deviceId, x, y, color, tool } = data;
+        const { deviceId, x, y, color, tool, size = 1 } = data;
         
         // Validate coordinates
         if (x === undefined || y === undefined || x < 0 || x >= 64 || y < 0 || y >= 64) {
@@ -105,6 +105,12 @@ export const initDrawingSocket = (io: Server) => {
           return;
         }
 
+        // Validate brush size
+        if (size < 1 || size > 10) {
+          socket.emit('error', { message: 'Invalid brush size' });
+          return;
+        }
+
         const roomName = `device_${deviceId}`;
         const session = activeSessions.get(deviceId);
         
@@ -113,11 +119,24 @@ export const initDrawingSocket = (io: Server) => {
           return;
         }
 
-        // Update drawing buffer
+        // Update drawing buffer with brush size
         const finalColor = tool === 'erase' ? '#000000' : color;
-        if (session.drawingBuffer[y]) {
-          session.drawingBuffer[y][x] = finalColor;
+        const halfSize = Math.floor((size - 1) / 2);
+        
+        for (let dy = -halfSize; dy <= halfSize + (size - 1) % 2; dy++) {
+          for (let dx = -halfSize; dx <= halfSize + (size - 1) % 2; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            
+            // Check bounds
+            if (px >= 0 && px < 64 && py >= 0 && py < 64) {
+              if (session.drawingBuffer[py]) {
+                session.drawingBuffer[py][px] = finalColor;
+              }
+            }
+          }
         }
+        
         session.lastActivity = Date.now();
 
         // Broadcast to other users in the room
@@ -126,6 +145,7 @@ export const initDrawingSocket = (io: Server) => {
           y,
           color: finalColor,
           tool,
+          size,
           userId: socket.data.user.id
         });
 
@@ -136,6 +156,7 @@ export const initDrawingSocket = (io: Server) => {
           y,
           color: finalColor,
           tool,
+          size,
           userId: socket.data.user.id
         });
 
@@ -229,11 +250,11 @@ export const initDrawingSocket = (io: Server) => {
     });
 
     // Handle disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`User ${socket.data.user.id} disconnected from drawing socket`);
       
       // Remove user from all sessions
-      activeSessions.forEach((session, deviceId) => {
+      for (const [deviceId, session] of activeSessions) {
         if (session.participants.has(socket.data.user.id)) {
           session.participants.delete(socket.data.user.id);
           
@@ -243,26 +264,37 @@ export const initDrawingSocket = (io: Server) => {
             username: socket.data.user.username
           });
           
-          // Clean up empty sessions
+          // Clean up empty sessions and notify ESP32
           if (session.participants.size === 0) {
+            console.log(`Last user left device ${deviceId}, sending exit drawing mode`);
+            try {
+              await exitDrawingMode(deviceId);
+            } catch (error) {
+              console.error(`Failed to send exit drawing mode for device ${deviceId}:`, error);
+            }
             activeSessions.delete(deviceId);
           }
         }
-      });
+      }
     });
   });
 
   // Clean up inactive sessions every 5 minutes
-  setInterval(() => {
+  setInterval(async () => {
     const now = Date.now();
     const INACTIVE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
-    activeSessions.forEach((session, deviceId) => {
+    for (const [deviceId, session] of activeSessions) {
       if (now - session.lastActivity > INACTIVE_TIMEOUT) {
         console.log(`Cleaning up inactive session for device ${deviceId}`);
+        try {
+          await exitDrawingMode(deviceId);
+        } catch (error) {
+          console.error(`Failed to send exit drawing mode for inactive device ${deviceId}:`, error);
+        }
         activeSessions.delete(deviceId);
       }
-    });
+    }
   }, 60000); // Check every minute
 
   console.log('Drawing WebSocket server initialized');

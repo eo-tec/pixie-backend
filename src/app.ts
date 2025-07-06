@@ -60,7 +60,7 @@ if (useHTTPS) {
       console.log(`Servidor seguro (HTTPS) escuchando en puerto ${PORT}`);
     });
   } catch (error) {
-    console.error('Error loading SSL certificates, falling back to HTTP:', error.message);
+    console.error('Error loading SSL certificates, falling back to HTTP:', error instanceof Error ? error.message : error);
     // Fallback to HTTP if certificates are not available
     server = createHttpServer(app);
     io = new Server(server, {

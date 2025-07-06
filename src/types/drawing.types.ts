@@ -4,6 +4,7 @@ export interface DrawingCommand {
   y?: number;
   color?: string;
   tool?: 'draw' | 'erase';
+  size?: number; // Brush size for draw_pixel
   points?: Array<{x: number, y: number}>;
   userId?: string;
 }

@@ -19,8 +19,9 @@ export const publishDrawingCommand = async (deviceId: number, command: DrawingCo
           action: 'draw_pixel',
           x: command.x,
           y: command.y,
-          color: rgb565Color,
+          color: command.color, // Send hex color instead of RGB565
           tool: command.tool,
+          size: command.size || 1, // Include brush size, default to 1
           userId: command.userId
         };
         break;
@@ -29,7 +30,7 @@ export const publishDrawingCommand = async (deviceId: number, command: DrawingCo
         message = {
           action: 'draw_stroke',
           points: command.points,
-          color: rgb565Color,
+          color: command.color, // Send hex color instead of RGB565
           tool: command.tool,
           userId: command.userId
         };
