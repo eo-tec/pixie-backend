@@ -84,3 +84,106 @@ export const newUser = async (req: AuthenticatedRequest, res: Response) => {
 
   res.json(newUser);
 };
+
+export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) => {
+  const { username } = req.params;
+  const currentUserId = req.user?.id;
+  
+  if (!currentUserId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!username) {
+    res.status(400).json({ error: "Nombre de usuario no proporcionado" });
+    return;
+  }
+
+  const page = parseInt(req.query.page as string) || 1;
+  const pageSize = parseInt(req.query.pageSize as string) || 10;
+  const skip = (page - 1) * pageSize;
+
+  try {
+    // First, find the user by username
+    const targetUser = await prisma.public_users.findFirst({
+      where: { username }
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "Usuario no encontrado" });
+      return;
+    }
+
+    // Get photos created by the target user that are visible to the current user
+    const photos = await prisma.photos.findMany({
+      skip: skip,
+      take: pageSize,
+      where: {
+        user_id: targetUser.id,
+        OR: [
+          // Photos explicitly shared with the current user
+          {
+            visible_by: {
+              some: {
+                user_id: currentUserId
+              }
+            }
+          },
+          // If the target user is the current user, show all their photos
+          {
+            user_id: currentUserId
+          }
+        ]
+      },
+      select: {
+        id: true,
+        created_at: true,
+        photo_url: true,
+        username: true,
+        title: true,
+        user_id: true
+      },
+      orderBy: {
+        created_at: "desc"
+      }
+    });
+
+    const totalPhotos = await prisma.photos.count({
+      where: {
+        user_id: targetUser.id,
+        OR: [
+          {
+            visible_by: {
+              some: {
+                user_id: currentUserId
+              }
+            }
+          },
+          {
+            user_id: currentUserId
+          }
+        ]
+      }
+    });
+
+    // Format photos to match PhotoResponse type
+    const formattedPhotos = photos.map(photo => ({
+      id: photo.id,
+      photo_url: photo.photo_url || '',
+      created_at: photo.created_at.toISOString(),
+      user_id: photo.user_id?.toString() || '',
+      username: photo.username || '',
+      title: photo.title || ''
+    }));
+
+    res.status(200).json({
+      photos: formattedPhotos,
+      totalPhotos,
+      totalPages: Math.ceil(totalPhotos / pageSize),
+      currentPage: page
+    });
+  } catch (err) {
+    console.error("/users/:username/photos error:", err);
+    res.status(500).send("Error al obtener las fotos del usuario.");
+  }
+};

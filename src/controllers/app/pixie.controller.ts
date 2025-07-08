@@ -55,12 +55,11 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    // Actualizar el pixie
+    // Actualizar el pixie - filtrar solo campos actualizables
+    const { id, created_at, created_by, mac, ...updateData } = pixie;
     const updatedPixie = await prisma.pixie.update({
       where: { id: pixie.id },
-      data: {
-        ...pixie
-      }
+      data: updateData
     });
 
     // Enviar mensaje MQTT
@@ -165,6 +164,53 @@ export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
   } catch (error) {
     console.error("Error al enviar comando de reset:", error);
     res.status(500).json({ error: "Error al enviar comando de reset" });
+  }
+};
+
+export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Response) => {
+  const { username } = req.params;
+  const requesterId = req.user?.id;
+  
+  console.log("🔐 getUserDrawablePixies", { username, requesterId });
+  
+  if (!requesterId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!username) {
+    res.status(400).json({ error: "Username requerido" });
+    return;
+  }
+
+  try {
+    // Buscar el usuario por username
+    const targetUser = await prisma.public_users.findFirst({
+      where: { username: username }
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "Usuario no encontrado" });
+      return;
+    }
+
+    // TODO: Verificar que son amigos antes de permitir ver los pixies
+    // Por ahora lo dejamos sin validación de amistad
+
+    // Obtener pixies del usuario que permiten dibujo
+    const pixies = await prisma.pixie.findMany({
+      where: {
+        created_by: targetUser.id,
+        allow_draws: true
+      },
+    });
+
+    console.log("🔍 Pixies con allow_draws encontrados:", pixies);
+    
+    res.status(200).json({ pixies });
+  } catch (error) {
+    console.error("Error al obtener pixies para dibujo:", error);
+    res.status(500).json({ error: "Error al obtener los pixies del usuario" });
   }
 };
 

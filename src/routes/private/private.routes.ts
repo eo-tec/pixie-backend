@@ -8,6 +8,7 @@ import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../..
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
 import { drawingRouter } from './drawing.routes';
+import { pixiesRouter } from './pixies.routes';
 // Otras rutas que tengas
 
 export const privateRouter = Router();
@@ -24,7 +25,6 @@ privateRouter.post('/post-photo', postPhoto);
 privateRouter.get('/me', getUser);
 //privateRouter.get('/friends', getFriends);
 
-privateRouter.get('/pixies', getPixies);
 privateRouter.get('/pixie/photo/:id', showPhoto);
 privateRouter.post('/pixie', setPixie);
 privateRouter.post('/pixie/activate', activatePixie);
@@ -35,6 +35,9 @@ privateRouter.post('/pixie/reset/:id', resetPixie);
 privateRouter.use('/friends', friendsRouter);
 
 privateRouter.use('/users', usersRouter);
+
+// Pixies routes
+privateRouter.use('/pixies', pixiesRouter);
 
 // Drawing routes
 privateRouter.use('/', drawingRouter);

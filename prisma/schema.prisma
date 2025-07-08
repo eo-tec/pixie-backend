@@ -80,6 +80,7 @@ model pixie {
   code                String?            @default("0000")
   secs_between_photos Int?               @default(60)
   spotify_enabled     Boolean            @default(false)
+  allow_draws         Boolean            @default(false)
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
