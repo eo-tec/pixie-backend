@@ -241,6 +241,80 @@ export async function cover64x64(req: Request, res: Response) {
   }
 }
 
+export async function cover64x64Binary(req: Request, res: Response) {
+  try {
+    console.log("🔐 cover64x64Binary:", req.query);
+    const { pixie_id } = req.query;
+
+    if (!pixie_id) {
+      res.status(400).json({ error: 'Se requiere el pixie_id' });
+      return;
+    }
+
+    // Obtenemos las credenciales de Spotify
+    const credentials = await getSpotifyCredentialsForPixie(Number(pixie_id));
+
+    // Configuramos el servicio de Spotify con las credenciales
+    spotifyService.getApi().setAccessToken(credentials.access_token);
+
+    const playbackState = await spotifyService.getApi().getMyCurrentPlayingTrack();
+    if (!playbackState.body || !playbackState.body.item) {
+      console.log('🎵 No hay canción reproduciéndose para obtener portada');
+      res.status(404).send('No se está reproduciendo ninguna canción.');
+      return
+    }
+
+    let coverUrl: string;
+    if ('album' in playbackState.body.item && playbackState.body.item.album.images.length > 0) {
+      coverUrl = playbackState.body.item.album.images[0].url;
+    } else if ('show' in playbackState.body.item && playbackState.body.item.show.images.length > 0) {
+      coverUrl = playbackState.body.item.show.images[0].url;
+    } else {
+      res.status(404).send('No se encontró portada adecuada.');
+      return
+    }
+    
+    const response = await fetch(coverUrl);
+    if (!response.ok) {
+      throw new Error(`Error fetching image from URL: ${response.statusText}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const resizedBuffer = await sharp(buffer)
+      .resize(64, 64)
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+
+    // Crear buffer binario RGB565
+    const binaryBuffer = Buffer.alloc(64 * 64 * 2); // 2 bytes por pixel
+    
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const idx = (y * 64 + x) * 4;
+        const r = resizedBuffer[idx];
+        const g = resizedBuffer[idx + 1];
+        const b = resizedBuffer[idx + 2];
+
+        // Convertir a RGB565 con corrección BGR
+        const rgb565 = ((b & 0b11111000) << 8) | ((r & 0b11111100) << 3) | (g >> 3);
+        
+        // Escribir en el buffer binario (big-endian)
+        const bufferIdx = (y * 64 + x) * 2;
+        binaryBuffer[bufferIdx] = (rgb565 >> 8) & 0xFF;
+        binaryBuffer[bufferIdx + 1] = rgb565 & 0xFF;
+      }
+    }
+
+    // Enviar como datos binarios
+    res.set('Content-Type', 'application/octet-stream');
+    res.send(binaryBuffer);
+  } catch (err) {
+    console.error('/cover-64x64-binary error:', err);
+    res.status(500).json({ error: 'Error al procesar la portada.' });
+  }
+}
+
 export async function idPlaying(req: Request, res: Response) {
   try {
     const { pixie_id } = req.query;
