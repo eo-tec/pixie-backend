@@ -96,7 +96,13 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
 
   // Verificamos si necesitamos refrescar el token
   const now = new Date();
+  console.log(`🕐 Verificando expiración del token...`);
+  console.log(`   - Hora actual: ${now.toISOString()}`);
+  console.log(`   - Token expira: ${credentials.expires_at?.toISOString() || 'No definido'}`);
+  console.log(`   - ¿Necesita refresh?: ${!credentials.expires_at || credentials.expires_at < now}`);
+  
   if (!credentials.expires_at || credentials.expires_at < now) {
+    console.log('🔄 Token expirado o sin fecha de expiración. Intentando refresh...');
     try {
       // // Creamos una instancia temporal del servicio de Spotify
       // const tempSpotifyService = new SpotifyService(
@@ -119,8 +125,9 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
       
       console.log("🔐 Token refrescado:", data.body);
       
-      // Calculamos el tiempo de expiración (1 hora desde ahora)
-      const expiresAt = new Date(now.getTime() + 3550000);
+      // Calculamos el tiempo de expiración usando el valor real de Spotify
+      const expiresIn = data.body.expires_in || 3600; // Default 1 hora si no viene el valor
+      const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
       // Actualizamos las credenciales en la base de datos
       await prisma.spotify_credentials.update({
@@ -131,17 +138,28 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
         }
       });
 
+      console.log('✅ Token refrescado exitosamente');
       return {
         access_token: data.body.access_token,
         refresh_token: credentials.spotify_refresh_token || ''
       };
-    } catch (error) {
-      console.error('Error al refrescar el token:', error);
+    } catch (error: any) {
+      console.error('❌ Error al refrescar el token:', error);
+      if (error.body) {
+        console.error('Error body:', error.body);
+      }
+      if (error.statusCode) {
+        console.error('Status code:', error.statusCode);
+        if (error.statusCode === 400) {
+          console.error('🔴 Error 400: Refresh token inválido. El usuario debe reautorizar la app.');
+        }
+      }
       throw new Error('Error al refrescar el token de Spotify');
     }
   }
 
   // Si el token no ha expirado, devolvemos las credenciales actuales
+  console.log('✅ Token aún válido, usando el existente');
   return {
     access_token: credentials.spotify_secret || '', // Usamos spotify_secret como access_token
     refresh_token: credentials.spotify_refresh_token || ''
@@ -232,12 +250,16 @@ export async function idPlaying(req: Request, res: Response) {
       return;
     }
 
+    console.log(`🎵 idPlaying - Pixie ID: ${pixie_id}`);
+
     // Obtenemos las credenciales de Spotify
     const credentials = await getSpotifyCredentialsForPixie(Number(pixie_id));
+    console.log(`🔐 Token obtenido, primeros 20 chars: ${credentials.access_token.substring(0, 20)}...`);
 
     // Configuramos el servicio de Spotify con las credenciales
     spotifyService.getApi().setAccessToken(credentials.access_token);
 
+    console.log('🎵 Llamando a Spotify API getMyCurrentPlaybackState...');
     const playbackState = await spotifyService.getApi().getMyCurrentPlaybackState();
 
     // Verificar si hay canción en reproducción
@@ -251,8 +273,25 @@ export async function idPlaying(req: Request, res: Response) {
       songId = playbackState.body.item.id;
     }
     res.json({ id: songId }); // Devuelve el ID de la canción en JSON
-  } catch (err) {
+  } catch (err: any) {
     console.error('/id-playing error:', err);
+    
+    // Log más detallado del error
+    if (err.body) {
+      console.error('Error body:', err.body);
+    }
+    if (err.statusCode) {
+      console.error('Status code:', err.statusCode);
+    }
+    if (err.headers) {
+      console.error('Headers:', err.headers);
+    }
+    
+    // Si es error 403, probablemente el token expiró o no tiene permisos
+    if (err.statusCode === 403) {
+      console.error('🔴 Error 403: Token inválido o sin permisos. El usuario debe reautorizar la app.');
+    }
+    
     res.status(500).json({ error: 'Error al obtener la canción actual.' });
   }
 }

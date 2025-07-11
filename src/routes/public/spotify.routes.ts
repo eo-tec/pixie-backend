@@ -13,7 +13,6 @@ spotifyRouter.get('/id-playing', idPlaying);
 spotifyRouter.get('/me', me);
 spotifyRouter.post('/save-credentials', saveCredentials);
 spotifyRouter.get('/is-logged', isLogged);
-spotifyRouter.get('/callback', callback);
 //spotifyRouter.get('/callback', exchangeCode);
 
 spotifyRouter.get('/', (req: Request, res: Response) => {
