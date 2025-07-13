@@ -306,3 +306,116 @@ export async function deletePhoto(req: AuthenticatedRequest, res: Response) {
     res.status(500).json({ error: "Error al eliminar la foto" });
   }
 }
+
+export async function getPhotoVisibility(req: AuthenticatedRequest, res: Response) {
+  const { id } = req.params;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!id) {
+    res.status(400).json({ error: "Se requiere el id de la foto" });
+    return;
+  }
+
+  try {
+    // Verificar que la foto existe y pertenece al usuario
+    const photo = await prisma.photos.findFirst({
+      where: {
+        id: parseInt(id),
+        user_id: userId,
+        deleted_at: null,
+      },
+    });
+
+    if (!photo) {
+      res.status(404).json({ error: "Foto no encontrada o no tienes permisos" });
+      return;
+    }
+
+    // Obtener usuarios que pueden ver la foto
+    const visibleUsers = await prisma.photo_visible_by_users.findMany({
+      where: {
+        photo_id: parseInt(id),
+      },
+      select: {
+        user_id: true,
+      },
+    });
+
+    const userIds = visibleUsers.map(vu => vu.user_id);
+
+    res.status(200).json({ userIds });
+  } catch (error) {
+    console.error("Error al obtener visibilidad de la foto:", error);
+    res.status(500).json({ error: "Error al obtener visibilidad de la foto" });
+  }
+}
+
+export async function updatePhotoVisibility(req: AuthenticatedRequest, res: Response) {
+  const { id } = req.params;
+  const { userIds } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!id) {
+    res.status(400).json({ error: "Se requiere el id de la foto" });
+    return;
+  }
+
+  if (!Array.isArray(userIds)) {
+    res.status(400).json({ error: "userIds debe ser un array" });
+    return;
+  }
+
+  try {
+    // Verificar que la foto existe y pertenece al usuario
+    const photo = await prisma.photos.findFirst({
+      where: {
+        id: parseInt(id),
+        user_id: userId,
+        deleted_at: null,
+      },
+    });
+
+    if (!photo) {
+      res.status(404).json({ error: "Foto no encontrada o no tienes permisos" });
+      return;
+    }
+
+    // Usar transacción para garantizar consistencia
+    await prisma.$transaction(async (tx) => {
+      // Eliminar todas las visibilidades existentes
+      await tx.photo_visible_by_users.deleteMany({
+        where: {
+          photo_id: parseInt(id),
+        },
+      });
+
+      // Crear nuevas visibilidades
+      if (userIds.length > 0) {
+        const visibilityData = userIds.map((visibleUserId: number) => ({
+          photo_id: parseInt(id),
+          user_id: Number(visibleUserId),
+          created_at: new Date(),
+        }));
+
+        await tx.photo_visible_by_users.createMany({
+          data: visibilityData,
+        });
+      }
+    });
+
+    res.status(200).json({ message: "Visibilidad actualizada correctamente" });
+  } catch (error) {
+    console.error("Error al actualizar visibilidad de la foto:", error);
+    res.status(500).json({ error: "Error al actualizar visibilidad de la foto" });
+  }
+}
