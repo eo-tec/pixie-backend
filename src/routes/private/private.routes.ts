@@ -1,6 +1,6 @@
 // src/routes/index.ts
 import { Router } from 'express';
-import { getPhotosFromUser, postPhoto } from '../../controllers/app/photos.controller';
+import { getPhotosFromUser, postPhoto, deletePhoto } from '../../controllers/app/photos.controller';
 import { verifyAuth } from './checkUser';
 import { Request, Response } from 'express';
 import { getUser, getFriends } from '../../controllers/app/user.controller';
@@ -21,6 +21,7 @@ privateRouter.get('/', (req: Request, res: Response) => {
 
 privateRouter.get('/photos-by-user', getPhotosFromUser);
 privateRouter.post('/post-photo', postPhoto);
+privateRouter.delete('/photo/:id', deletePhoto);
 
 privateRouter.get('/me', getUser);
 //privateRouter.get('/friends', getFriends);

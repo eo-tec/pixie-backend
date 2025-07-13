@@ -71,6 +71,7 @@ export async function getPhotosFromUser(
       take: pageSize,
       distinct: ["photo_url"],
       where: {
+        deleted_at: null,
         OR: [
           {
             visible_by: {
@@ -101,6 +102,7 @@ export async function getPhotosFromUser(
 
     const totalPhotos = await prisma.photos.count({
       where: {
+        deleted_at: null,
         OR: [
           {
             visible_by: {
@@ -263,5 +265,44 @@ export async function postPhoto(req: Request, res: Response) {
   } catch (err) {
     console.error("❌ /post-photo error:", err);
     res.status(500).send("Error al subir la foto.");
+  }
+}
+
+export async function deletePhoto(req: AuthenticatedRequest, res: Response) {
+  const { id } = req.params;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!id) {
+    res.status(400).json({ error: "Se requiere el id de la foto" });
+    return;
+  }
+
+  try {
+    const photo = await prisma.photos.findFirst({
+      where: {
+        id: parseInt(id),
+        user_id: userId,
+      },
+    });
+
+    if (!photo) {
+      res.status(404).json({ error: "Foto no encontrada o no tienes permisos" });
+      return;
+    }
+
+    const updatedPhoto = await prisma.photos.update({
+      where: { id: parseInt(id) },
+      data: { deleted_at: new Date() },
+    });
+
+    res.status(200).json({ message: "Foto eliminada", photo: updatedPhoto });
+  } catch (error) {
+    console.error("Error al eliminar la foto:", error);
+    res.status(500).json({ error: "Error al eliminar la foto" });
   }
 }

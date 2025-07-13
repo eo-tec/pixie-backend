@@ -119,6 +119,7 @@ export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) =>
       skip: skip,
       take: pageSize,
       where: {
+        deleted_at: null,
         user_id: targetUser.id,
         OR: [
           // Photos explicitly shared with the current user
@@ -150,6 +151,7 @@ export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) =>
 
     const totalPhotos = await prisma.photos.count({
       where: {
+        deleted_at: null,
         user_id: targetUser.id,
         OR: [
           {
