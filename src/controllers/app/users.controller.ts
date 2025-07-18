@@ -2,6 +2,7 @@ import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from "../../services/prisma";
 import { Response } from "express";
 import { User } from "../../types/frontTypes";
+import { cleanUsername } from "../../utils/string-utils";
 
 export const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
   const { username } = req.params;
@@ -59,30 +60,43 @@ export const newUser = async (req: AuthenticatedRequest, res: Response) => {
     return;
   }
 
-  // Comprobar si el usuario ya existe
-  const user = await prisma.public_users.findFirst({
-    where: { user_id }
-  });
+  try {
+    // Limpiar y validar el username
+    const cleanedUsername = cleanUsername(username);
+    
+    // Comprobar si el usuario ya existe
+    const user = await prisma.public_users.findFirst({
+      where: { user_id }
+    });
 
-  if (user) {
-    res.status(400).json({ error: "Usuario ya existe" });
-    return;
+    if (user) {
+      res.status(400).json({ error: "Usuario ya existe" });
+      return;
+    }
+
+    const userName = await prisma.public_users.findFirst({
+      where: { username: cleanedUsername }
+    });
+
+    if (userName) {
+      res.status(400).json({ error: "Nombre de usuario ya existe" });
+      return;
+    }
+    
+    // Crear un nuevo usuario
+    const newUser = await prisma.public_users.create({
+      data: { username: cleanedUsername, user_id }
+    });
+
+    res.json(newUser);
+  } catch (error) {
+    console.error("Error creating user:", error);
+    if (error instanceof Error) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
   }
-
-  const userName = await prisma.public_users.findFirst({
-    where: { username }
-  });
-
-  if (userName) {
-    res.status(400).json({ error: "Nombre de usuario ya existe" });
-    return;
-  }
-  // Crear un nuevo usuario
-  const newUser = await prisma.public_users.create({
-    data: { username, user_id }
-  });
-
-  res.json(newUser);
 };
 
 export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) => {
