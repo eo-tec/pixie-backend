@@ -42,23 +42,30 @@ export async function getPhoto(req: Request, res: Response) {
 
     const photos = await prisma.photos.findMany({
       where: {
-        OR: [
+        AND: [
           {
-            visible_by: {
-              some: {
+            OR: [
+              {
+                visible_by: {
+                  some: {
+                    user_id: pixie.created_by,
+                  },
+                },
+              },
+              {
                 user_id: pixie.created_by,
               },
-            },
+            ],
           },
           {
-            user_id: pixie.created_by,
+            deleted_at: null,
           },
         ],
       },
       orderBy: {
         created_at: "desc",
       },
-      take: 10
+      take: 10,
     });
 
     const photo = photos[id % photos.length];
@@ -180,10 +187,14 @@ async function getPhotoFromIndexId(index: number, id: number) {
     return await prisma.photos.findFirst({
       where: {
         id: id,
+        deleted_at: null,
       },
     });
   } else {
     const photos = await prisma.photos.findMany({
+      where: {
+        deleted_at: null,
+      },
       orderBy: { created_at: "desc" },
       take: 5,
     });
@@ -395,16 +406,23 @@ export async function getPhotoByPixie(req: Request, res: Response) {
 
     const photos = await prisma.photos.findMany({
       where: {
-        OR: [
+        AND: [
           {
-            visible_by: {
-              some: {
+            OR: [
+              {
+                visible_by: {
+                  some: {
+                    user_id: pixie.created_by,
+                  },
+                },
+              },
+              {
                 user_id: pixie.created_by,
               },
-            },
+            ],
           },
           {
-            user_id: pixie.created_by,
+            deleted_at: null,
           },
         ],
       },
