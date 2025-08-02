@@ -14,9 +14,9 @@ const generateRandomCode = (id: number) => {
   hmac.update(String(id));
   const digest = hmac.digest().subarray(0, DIGEST_BYTES); // 40 bits
 
-  // 2) Convertimos a Base64 “segura” y nos quedamos con letras/números
+  // 2) Convertimos a Base64 "segura" y nos quedamos con letras mayúsculas y números
   const b64 = digest.toString("base64"); // incluye + / =
-  const safe = b64.replace(/[^0-9A-Za-z]/g, ""); // solo A-Z a-z 0-9
+  const safe = b64.replace(/[^0-9A-Za-z]/g, "").toUpperCase(); // solo A-Z 0-9
 
   // 3) Ajustamos la longitud requerida
   return safe.slice(0, length).padEnd(length, "0"); // rellena por si acaso
@@ -32,26 +32,51 @@ export const addPixie = async (req: Request, res: Response) => {
   }
 
   try {
-    const randomCode = generateRandomCode(mac.toString());
+    // Verificar si ya existe un Pixie con esta MAC
+    const existingPixie = await prisma.pixie.findFirst({
+      where: { mac: mac }
+    });
+
+    if (existingPixie) {
+      console.log("Pixie ya existe con MAC: ", mac);
+      res.status(200).json({
+        message: "Pixie already exists",
+        pixie: existingPixie,
+        code: existingPixie.code,
+      });
+      return;
+    }
+
+    // Crear el Pixie primero sin código
     const pixie = await prisma.pixie.create({
       data: {
         mac: mac,
         name: "Pixie",
-        code: randomCode,
       },
     });
 
     if (!pixie) {
       throw Error("Error creating Pixie");
     }
-    console.log("Pixie añadido: ", pixie);
+
+    // Generar código usando el ID del Pixie creado
+    const randomCode = generateRandomCode(pixie.id);
+
+    // Actualizar el Pixie con el código generado
+    const updatedPixie = await prisma.pixie.update({
+      where: { id: pixie.id },
+      data: { code: randomCode },
+    });
+
+    console.log("Pixie añadido: ", updatedPixie);
 
     res.status(200).json({
       message: "Pixie added successfully",
-      pixie,
+      pixie: updatedPixie,
       code: randomCode,
     });
   } catch (error: any) {
+    console.error("Error en addPixie: ", error);
     res.status(500).json({ error: error.message });
   }
 };
