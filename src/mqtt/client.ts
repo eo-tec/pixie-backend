@@ -32,8 +32,6 @@ export const publishToMQTT = (topic: string, message: string | object) => {
   client.publish(topic, messageToSend, { qos: 1 }, (err) => {
     if (err) {
       console.error('❌ Error publicando en MQTT:', err);
-    } else {
-      console.log(`📤 Mensaje enviado a ${topic}:`, messageToSend);
     }
   });
 };

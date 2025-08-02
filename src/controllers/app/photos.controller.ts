@@ -151,12 +151,9 @@ export async function imageToRGB565(buffer: Buffer) {
 
 export async function postPhoto(req: Request, res: Response) {
   try {
-    console.log("Empezando postPhoto");
     const { userId, title, photoFile, usersId } = req.body;
 
-    console.log("📸 Subiendo foto:", title);
     if (!userId || !photoFile) {
-      console.log("❌ Error: datos incompletos.");
       res.status(400).send("Error: datos incompletos.");
       return;
     }
@@ -172,7 +169,6 @@ export async function postPhoto(req: Request, res: Response) {
       return;
     }
 
-    console.log("👤 Usuario:", user);
 
     // 📌 Convertir la imagen de Base64 a Buffer
     const fileBuffer = Buffer.from(photoFile, "base64");
@@ -191,9 +187,7 @@ export async function postPhoto(req: Request, res: Response) {
       "image/png"
     );
 
-    console.log("📤 Foto subida a Minio");
 
-    console.log("🔗 URL:", photoUrlMinio);
 
     // 📌 Guardar en la base de datos
     const newPhoto = await prisma.photos.create({
@@ -260,7 +254,6 @@ export async function postPhoto(req: Request, res: Response) {
       }
     }
 
-    console.log("✅ Se ha creado la foto");
     res.status(201).json(newPhoto);
   } catch (err) {
     console.error("❌ /post-photo error:", err);

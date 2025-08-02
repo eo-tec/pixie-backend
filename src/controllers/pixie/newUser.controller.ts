@@ -4,7 +4,6 @@ import { cleanUsername } from "../../utils/string-utils";
 
 export const newUser = async (req: Request, res: Response) => {
     const { username, user_id } = req.body;
-    console.log("🔐 newUser", username, user_id);
     if (!username || !user_id) {
       res.status(400).json({ error: "Username or email not provided" });
       return;

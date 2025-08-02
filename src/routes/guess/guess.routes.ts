@@ -109,7 +109,6 @@ guessRouter.get("/playlists", async (req: Request, res: Response) => {
         recentlyPlayedPlaylists = [...new Set(playlistContexts as string[])];
       }
     } catch (error) {
-      console.log('Could not fetch recently played tracks, falling back to creation date');
     }
 
     // Sort playlists: recently played first, then by creation date (newest first)

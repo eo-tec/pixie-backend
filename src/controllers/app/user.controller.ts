@@ -4,7 +4,6 @@ import prisma from '../../services/prisma';
 
 async function getUser(req: AuthenticatedRequest, res: Response) {
     const id = req.user?.id;
-    console.log("🔐 getUser", id);
     if (!id) {
         res.status(401).json({ error: 'Usuario no autenticado' });
         return;
@@ -36,7 +35,6 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
 
 async function getFriends(req: AuthenticatedRequest, res: Response) {
     const id = req.user?.id;
-    console.log("🔐 getFriends", id);
     if (!id) {
         res.status(401).json({ error: 'Usuario no autenticado' });
         return;

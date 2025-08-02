@@ -49,7 +49,6 @@ export const publishDrawingCommand = async (deviceId: number, command: DrawingCo
     }
 
     await publishToMQTT(topic, JSON.stringify(message));
-    console.log(`Published drawing command to ${topic}:`, message);
     
   } catch (error) {
     console.error('Error publishing drawing command:', error);
@@ -93,7 +92,6 @@ export const enterDrawingMode = async (deviceId: number): Promise<void> => {
     };
     
     await publishToMQTT(topic, JSON.stringify(message));
-    console.log(`Entered drawing mode for device ${deviceId}`);
     
   } catch (error) {
     console.error('Error entering drawing mode:', error);
@@ -110,7 +108,6 @@ export const exitDrawingMode = async (deviceId: number): Promise<void> => {
     };
     
     await publishToMQTT(topic, JSON.stringify(message));
-    console.log(`Exited drawing mode for device ${deviceId}`);
     
   } catch (error) {
     console.error('Error exiting drawing mode:', error);

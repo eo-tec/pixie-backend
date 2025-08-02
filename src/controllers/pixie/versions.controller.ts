@@ -19,7 +19,6 @@ export async function getLatestVersion(req: Request, res: Response) {
 
     const url = await getPresignedUrlBin(version.url);
 
-    console.log("url prefirmado", url);
 
     res.json({
       ...version,

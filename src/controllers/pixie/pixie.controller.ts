@@ -24,7 +24,6 @@ const generateRandomCode = (id: number) => {
 
 export const addPixie = async (req: Request, res: Response) => {
   const { mac } = req.body;
-  console.log("Se añade un Pixie con MAC: ", mac);
 
   if (!mac) {
     res.status(400).json({ error: "MAC address is required" });
@@ -38,7 +37,6 @@ export const addPixie = async (req: Request, res: Response) => {
     });
 
     if (existingPixie) {
-      console.log("Pixie ya existe con MAC: ", mac);
       res.status(200).json({
         message: "Pixie already exists",
         pixie: existingPixie,
@@ -68,7 +66,6 @@ export const addPixie = async (req: Request, res: Response) => {
       data: { code: randomCode },
     });
 
-    console.log("Pixie añadido: ", updatedPixie);
 
     res.status(200).json({
       message: "Pixie added successfully",
@@ -83,13 +80,10 @@ export const addPixie = async (req: Request, res: Response) => {
 
 export const getPixie = async (req: Request, res: Response) => {
   const pixieId = parseInt(String(req.query.id), 10);
-  console.log("Se obtiene un Pixie con ID: ", pixieId);
   if (isNaN(pixieId) || pixieId < 0) {
     res.status(400).json({ error: "Invalid pixieId parameter" });
     return;
   }
-
-  console.log("Se obtiene un Pixie con ID: ", pixieId);
 
   try {
     const pixie = await prisma.pixie.findUnique({

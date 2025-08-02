@@ -99,7 +99,6 @@ export async function getPhoto(req: Request, res: Response) {
       return;
     }
 
-    console.log("Este es el url", photo?.photo_url);
     const fileName = photo?.photo_url?.split("/").pop() || "";
     const fileStream = await downloadFile(fileName);
     const chunks: Buffer[] = [];
@@ -205,7 +204,6 @@ export async function getPhotoBinary(req: Request, res: Response) {
   const id = Number(req.query.id);
   const index = Number(req.query.index);
   const photo = await getPhotoFromIndexId(index, id);
-  console.log("photo", photo?.photo_url);
   if (!photo?.photo_url) {
     res.status(404).send("Foto no encontrada.");
     return;
@@ -213,7 +211,6 @@ export async function getPhotoBinary(req: Request, res: Response) {
   try {
     const fileNameMinio = photo.photo_url;
     const fileNameMinioBin = fileNameMinio + ".bin";
-    console.log("fileNameMinioBin", fileNameMinioBin);
     const fileExists = await checkFile(fileNameMinioBin);
 
     const title = photo.title || "";
@@ -227,7 +224,6 @@ export async function getPhotoBinary(req: Request, res: Response) {
     let finalBuffer;
     if (fileExists) {
       // Si existe el archivo binario, lo descargamos y enviamos directamente
-      console.log("Descargando archivo binario");
       const fileStream = await downloadFile(fileNameMinioBin);
       const chunks: Buffer[] = [];
       for await (const chunk of fileStream) {
@@ -314,12 +310,9 @@ async function photoToPixelMatrix(buffer: Buffer) {
 
 export async function postPublicPhoto(req: Request, res: Response) {
   try {
-    console.log("Empezando postPublicPhoto");
     const { title, photoFile } = req.body;
 
-    console.log("📸 Subiendo foto:", title);
     if (!photoFile) {
-      console.log("❌ Error: datos incompletos.");
       res.status(400).send("Error: datos incompletos.");
       return;
     }
@@ -341,9 +334,7 @@ export async function postPublicPhoto(req: Request, res: Response) {
       "image/png"
     );
 
-    console.log("📤 Foto subida a Minio");
 
-    console.log("🔗 URL:", photoUrlMinio);
 
     // 📌 Guardar en la base de datos
     const newPhoto = await prisma.photos.create({

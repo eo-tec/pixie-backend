@@ -21,7 +21,6 @@ export class SpotifyService {
   private loadRefreshToken(): string | null {
     if (fs.existsSync(REFRESH_TOKEN_FILE)) {
       const token = fs.readFileSync(REFRESH_TOKEN_FILE, 'utf-8').trim();
-      console.log('Refresh Token cargado desde el archivo.');
       return token;
     }
     return null;
@@ -30,7 +29,6 @@ export class SpotifyService {
   // Método para guardar refresh_token en archivo
   private saveRefreshToken(token: string) {
     fs.writeFileSync(REFRESH_TOKEN_FILE, token, 'utf-8');
-    console.log('Refresh Token guardado en el archivo.');
   }
 
   // Llamar cuando sea necesario refrescar el access token

@@ -13,18 +13,15 @@ type Photo = Database['public']['Tables']['photos']['Row'];
 export function initTelegramBot() {
   // Solo si hay token
   if (!TELEGRAM_BOT_TOKEN) {
-    console.log('No TELEGRAM_BOT_TOKEN found. Bot not started.');
     return;
   }
 
   const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-  console.log('Bot de Telegram iniciado y escuchando mensajes...');
 
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from?.id;
     const username = msg.from?.first_name;
-    console.log('Received message:', msg);
 
     // Ignorar mensajes que son comandos o respuestas a comandos
     if (msg.text?.startsWith('/') || msg.reply_to_message) {

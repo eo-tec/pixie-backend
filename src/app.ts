@@ -13,6 +13,7 @@ import cors from 'cors';
 import { checkBucket } from './minio/minio';
 import { Server } from 'socket.io';
 import { initDrawingSocket } from './websocket/drawing.socket';
+import { requestLogger } from './middleware/requestLogger';
 
 const app = express();
 
@@ -31,6 +32,9 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.json());
 
 app.use(express.static('public'));
+
+// Request logger middleware
+app.use(requestLogger);
 
 // Rutas principales
 app.use('/', mainRouter);

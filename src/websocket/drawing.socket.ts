@@ -47,7 +47,6 @@ export const initDrawingSocket = (io: Server) => {
   });
 
   io.on('connection', (socket: Socket) => {
-    console.log(`User ${socket.data.user.id} connected to drawing socket`);
 
     // Join device room for drawing
     socket.on('join_device', (deviceId: number) => {
@@ -68,7 +67,6 @@ export const initDrawingSocket = (io: Server) => {
       session.participants.add(socket.data.user.id);
       session.lastActivity = Date.now();
 
-      console.log(`User ${socket.data.user.id} joined device ${deviceId} room`);
       
       // Send current drawing state to the new user
       socket.emit('drawing_state', {
@@ -251,7 +249,6 @@ export const initDrawingSocket = (io: Server) => {
 
     // Handle disconnect
     socket.on('disconnect', async () => {
-      console.log(`User ${socket.data.user.id} disconnected from drawing socket`);
       
       // Remove user from all sessions
       for (const [deviceId, session] of activeSessions) {
@@ -266,7 +263,6 @@ export const initDrawingSocket = (io: Server) => {
           
           // Clean up empty sessions and notify ESP32
           if (session.participants.size === 0) {
-            console.log(`Last user left device ${deviceId}, sending exit drawing mode`);
             try {
               await exitDrawingMode(deviceId);
             } catch (error) {
@@ -286,7 +282,6 @@ export const initDrawingSocket = (io: Server) => {
 
     for (const [deviceId, session] of activeSessions) {
       if (now - session.lastActivity > INACTIVE_TIMEOUT) {
-        console.log(`Cleaning up inactive session for device ${deviceId}`);
         try {
           await exitDrawingMode(deviceId);
         } catch (error) {
@@ -297,5 +292,4 @@ export const initDrawingSocket = (io: Server) => {
     }
   }, 60000); // Check every minute
 
-  console.log('Drawing WebSocket server initialized');
 };

@@ -38,7 +38,7 @@ function cleanOldFiles() {
       fs.stat(filePath, (err, stats) => {
         if (err) return;
         if (now - stats.atimeMs > EXPIRATION_TIME) {
-          fs.unlink(filePath, () => console.log(`Archivo eliminado: ${filePath}`));
+          fs.unlink(filePath, () => {});
         }
       });
     });

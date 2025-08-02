@@ -17,7 +17,6 @@ interface SupabaseUser {
 // Middleware de autenticación
 export async function verifyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const token = req.headers.authorization?.split(' ')[1]; // Extraer el token del header
-  console.log('🔐 Token:', token);
 
   if (!token) {
     res.status(401).json({ error: 'No token provided' });
@@ -28,14 +27,11 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
     // 🔥 Verificar el token en Supabase
     const { data: user, error } = await supabase.auth.getUser(token);
     if(error) {
-      console.log('🔥 Supabase Error:', error);
     }else{
-      console.log('🔥 Supabase User:', user);
     }
 
     
     if (!user) {
-      console.log("🔐 Token inválido");
       res.status(401).json({ error: 'Invalid token' });
       return
     }
@@ -51,10 +47,8 @@ export async function verifyAuth(req: AuthenticatedRequest, res: Response, next:
       }
     })
 
-    console.log('🔥 Public user:', userSupa);
 
     if (!userSupa) {
-      console.log("🔐 Usuario no encontrado en la base de datos");
       res.status(403).json({ error: 'User not found in database' });
       return
     }

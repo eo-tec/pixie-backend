@@ -6,7 +6,6 @@ import { pixie } from "@prisma/client";
 
 export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
   const id = req.user?.id;
-  console.log("🔐 getPixiesByUser", id);
   if (!id) {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
@@ -26,7 +25,6 @@ export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
-  console.log("🔐 setPixie", req.body);
   const pixie : pixie = req.body;
   const userId = req.user?.id;
 
@@ -48,7 +46,6 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       }
     });
 
-    console.log("🔐 Pixie encontrada", existingPixie);
 
     if (!existingPixie) {
       res.status(404).json({ error: "Pixie no encontrado o no tienes permisos" });
@@ -63,7 +60,6 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     });
 
     // Enviar mensaje MQTT
-    console.log("🔐 Enviando mensaje MQTT a topic", `pixie/${existingPixie.id}`);
     publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({action: "update_info", pixie: updatedPixie}));
 
     res.status(200).json({ pixie: updatedPixie });
@@ -75,7 +71,6 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
 
 export const showPhoto = async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  console.log("🔐 showPhoto", id);
 
   const pixies = await prisma.pixie.findMany({
     where: {
@@ -145,7 +140,6 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
 
 export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  console.log("🔄 resetPixie", id);
 
   const pixieId = parseInt(id, 10);
   if (isNaN(pixieId)) {
@@ -171,7 +165,6 @@ export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Resp
   const { username } = req.params;
   const requesterId = req.user?.id;
   
-  console.log("🔐 getUserDrawablePixies", { username, requesterId });
   
   if (!requesterId) {
     res.status(401).json({ error: "Usuario no autenticado" });
@@ -205,7 +198,6 @@ export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Resp
       },
     });
 
-    console.log("🔍 Pixies con allow_draws encontrados:", pixies);
     
     res.status(200).json({ pixies });
   } catch (error) {

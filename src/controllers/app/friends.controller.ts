@@ -17,7 +17,6 @@ export const getFriend = async (req: Request, res: Response) => {
 
 export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
   const id = req.user?.id;
-  console.log("🔐 getFriends", id);
 
   if (!id) {
     res.status(401).json({ error: "Usuario no autenticado" });
@@ -59,7 +58,6 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
 
 export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id;
-  console.log("🔐 acceptFriend", userId);
 
   const { id } = req.params;
   if (!id) {
@@ -91,7 +89,6 @@ export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => 
 
 export const declineFriend = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id;
-  console.log("🔐 declineFriend", userId);
 
   const { id } = req.params;
   if (!id) {

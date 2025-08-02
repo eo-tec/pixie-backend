@@ -39,7 +39,6 @@ export async function callback(req: Request, res: Response) {
   try {
     const data = await spotifyService.getApi().authorizationCodeGrant(code as string);
 
-    console.log("Actualizando credenciales de Spotify del usuario", user_id);
 
     if (data){
       const spotify_credentials = await prisma.spotify_credentials.upsert({
@@ -60,7 +59,6 @@ export async function callback(req: Request, res: Response) {
         },
       });
 
-      console.log("🔐 spotify_credentials", spotify_credentials);
     }
 
     res.redirect(process.env.SETTINGS_URI || "https://app.mypixelframe.com/settings");
@@ -96,13 +94,8 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
 
   // Verificamos si necesitamos refrescar el token
   const now = new Date();
-  console.log(`🕐 Verificando expiración del token...`);
-  console.log(`   - Hora actual: ${now.toISOString()}`);
-  console.log(`   - Token expira: ${credentials.expires_at?.toISOString() || 'No definido'}`);
-  console.log(`   - ¿Necesita refresh?: ${!credentials.expires_at || credentials.expires_at < now}`);
   
   if (!credentials.expires_at || credentials.expires_at < now) {
-    console.log('🔄 Token expirado o sin fecha de expiración. Intentando refresh...');
     try {
       // // Creamos una instancia temporal del servicio de Spotify
       // const tempSpotifyService = new SpotifyService(
@@ -116,14 +109,12 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
         throw new Error('No se encontró el refresh token');
       }
 
-      console.log("🔐 Refresh token:", credentials.spotify_refresh_token);
       spotifyApi.setRefreshToken(credentials.spotify_refresh_token);
 
 
       // Refrescamos el token
       const data = await spotifyApi.refreshAccessToken();
       
-      console.log("🔐 Token refrescado:", data.body);
       
       // Calculamos el tiempo de expiración usando el valor real de Spotify
       const expiresIn = data.body.expires_in || 3600; // Default 1 hora si no viene el valor
@@ -138,7 +129,6 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
         }
       });
 
-      console.log('✅ Token refrescado exitosamente');
       return {
         access_token: data.body.access_token,
         refresh_token: credentials.spotify_refresh_token || ''
@@ -159,7 +149,6 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
   }
 
   // Si el token no ha expirado, devolvemos las credenciales actuales
-  console.log('✅ Token aún válido, usando el existente');
   return {
     access_token: credentials.spotify_secret || '', // Usamos spotify_secret como access_token
     refresh_token: credentials.spotify_refresh_token || ''
@@ -168,7 +157,6 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
 
 export async function cover64x64(req: Request, res: Response) {
   try {
-    console.log("🔐 cover64x64:", req.query);
     const { pixie_id } = req.query;
 
     if (!pixie_id) {
@@ -243,7 +231,6 @@ export async function cover64x64(req: Request, res: Response) {
 
 export async function cover64x64Binary(req: Request, res: Response) {
   try {
-    console.log("🔐 cover64x64Binary:", req.query);
     const { pixie_id } = req.query;
 
     if (!pixie_id) {
@@ -259,7 +246,6 @@ export async function cover64x64Binary(req: Request, res: Response) {
 
     const playbackState = await spotifyService.getApi().getMyCurrentPlayingTrack();
     if (!playbackState.body || !playbackState.body.item) {
-      console.log('🎵 No hay canción reproduciéndose para obtener portada');
       res.status(404).send('No se está reproduciendo ninguna canción.');
       return
     }
@@ -324,16 +310,13 @@ export async function idPlaying(req: Request, res: Response) {
       return;
     }
 
-    console.log(`🎵 idPlaying - Pixie ID: ${pixie_id}`);
 
     // Obtenemos las credenciales de Spotify
     const credentials = await getSpotifyCredentialsForPixie(Number(pixie_id));
-    console.log(`🔐 Token obtenido, primeros 20 chars: ${credentials.access_token.substring(0, 20)}...`);
 
     // Configuramos el servicio de Spotify con las credenciales
     spotifyService.getApi().setAccessToken(credentials.access_token);
 
-    console.log('🎵 Llamando a Spotify API getMyCurrentPlaybackState...');
     const playbackState = await spotifyService.getApi().getMyCurrentPlaybackState();
 
     // Verificar si hay canción en reproducción
@@ -385,7 +368,6 @@ async function refreshAccessTokenIfNeeded() {
 function loadRefreshToken() {
   if (fs.existsSync(REFRESH_TOKEN_FILE)) {
     const token = fs.readFileSync(REFRESH_TOKEN_FILE, 'utf-8').trim();
-    console.log('Refresh Token cargado desde el archivo.');
     return token;
   }
   return null;
@@ -396,7 +378,6 @@ function loadRefreshToken() {
 // -------------------------------------------------------------------
 function saveRefreshToken(token: any) {
   fs.writeFileSync(REFRESH_TOKEN_FILE, token, 'utf-8');
-  console.log('Refresh Token guardado en el archivo.');
 }
 
 export async function me(req: Request, res: Response) {
@@ -418,7 +399,6 @@ export async function saveCredentials(req: Request, res: Response) {
   try {
     const { spotify_id, spotify_refresh_token, user_id } = req.body;
 
-    console.log("🔐 saveCredentials", req.body);
 
     if (!spotify_id || !spotify_refresh_token || !user_id) {
       res.status(400).json({ error: 'Faltan parámetros requeridos' });
@@ -432,7 +412,6 @@ export async function saveCredentials(req: Request, res: Response) {
       },
     });
 
-    console.log("🔐 user", user);
     
     if (!user) {
       res.status(404).json({ error: 'Usuario no encontrado' });
@@ -446,7 +425,6 @@ export async function saveCredentials(req: Request, res: Response) {
       },
     });
 
-    console.log("🔐 existingCredentials", existingCredentials);
 
     let credentials;
     if (existingCredentials) {
@@ -472,7 +450,6 @@ export async function saveCredentials(req: Request, res: Response) {
       });
     }
 
-    console.log("🔐 credentials", credentials);
 
     res.json({ message: 'Credenciales guardadas correctamente', credentials });
   } catch (err) {

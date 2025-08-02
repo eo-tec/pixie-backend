@@ -7,7 +7,6 @@ import { cleanUsername } from "../../utils/string-utils";
 export const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
   const { username } = req.params;
   const id = req.user?.id;
-  console.log("🔐 searchUsers", id);
   if (!username) {
     res.status(400).json({ error: "Nombre de usuario no proporcionado" });
     return;
@@ -54,7 +53,6 @@ export const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
 export const newUser = async (req: AuthenticatedRequest, res: Response) => {
   const { username, user_id } = req.body;
   const id = req.user?.id;
-  console.log("🔐 newUser", id);
   if (!username || !user_id) {
     res.status(400).json({ error: "Nombre de usuario o correo electrónico no proporcionado" });
     return;

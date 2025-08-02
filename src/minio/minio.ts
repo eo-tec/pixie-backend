@@ -35,7 +35,6 @@ export const uploadFile = async (file: Buffer, fileName: string, contentType: st
         'Content-Type': contentType,
       }
     );
-    console.log("🔗 response:", response);
     return `${publicUrl}/${process.env.MINIO_BUCKET}/${fileName}`;
   } catch (error: any) {
     console.error("❌ Error al subir el archivo:", error);
@@ -141,21 +140,13 @@ const BUCKET_NAME = process.env.MINIO_BUCKET || "photos";
 
 // --- Funciones Refactorizadas ---
 
-console.log("--- S3 Client Config ---");
-console.log("Endpoint:", endpoint); // La variable que construiste
-console.log("Region:", "euw");
-console.log("Access Key Set:", process.env.MINIO_ACCESS_KEY); // No imprimas la clave!
-console.log("Secret Access Key:", process.env.MINIO_SECRET_KEY); // No imprimas la clave!
-console.log("Force Path Style:", true); // Asumiendo que está hardcodeado como true
-console.log("-------------------------");
+// S3 Client config removed for cleaner logs
 
 // Función para verificar/crear el bucket "photos"
 export const checkBucket = async () => {
-  console.log(`Checking if bucket "${BUCKET_NAME}" exists...`);
   try {
     // HeadBucket es una forma ligera de verificar existencia y permisos
     await s3Client.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
-    console.log(`Bucket "${BUCKET_NAME}" already exists.`);
   } catch (error: any) {
     // Si el error es 'NotFound', el bucket no existe y podemos crearlo
     if (
@@ -164,10 +155,8 @@ export const checkBucket = async () => {
       error.$metadata?.httpStatusCode === 404
     ) {
       // Diferentes SDKs/versiones pueden dar nombres distintos
-      console.log(`Bucket "${BUCKET_NAME}" not found. Creating...`);
       try {
         await s3Client.send(new CreateBucketCommand({ Bucket: BUCKET_NAME }));
-        console.log(`Bucket "${BUCKET_NAME}" created successfully.`);
       } catch (createError) {
         console.error(`Failed to create bucket "${BUCKET_NAME}":`, createError);
         throw createError; // Relanza el error si falla la creación
@@ -195,9 +184,7 @@ export const uploadFile = async (
   };
 
   try {
-    console.log(`Uploading "${fileName}" to bucket "${BUCKET_NAME}"...`);
     await s3Client.send(new PutObjectCommand(params));
-    console.log(`File "${fileName}" uploaded successfully.`);
 
     // Construir la URL pública (¡CUIDADO! Solo si el bucket es público)
     // Asegúrate que MINIO_ENDPOINT tenga el protocolo y que el bucket permita lectura pública
@@ -241,9 +228,7 @@ export const downloadFile = async (
   };
 
   try {
-    console.log(`Downloading "${fileName}" from bucket "${BUCKET_NAME}"...`);
     const response = await s3Client.send(new GetObjectCommand(params));
-    console.log(`File "${fileName}" downloaded successfully.`);
     // El cuerpo de la respuesta es un ReadableStream
     return response.Body as Readable | undefined;
   } catch (error) {
@@ -264,11 +249,9 @@ export const getPresignedUrl = async (
   const command = new GetObjectCommand(params);
 
   try {
-    console.log(`Generating presigned URL for "${fileName}"...`);
     const url = await getSignedUrl(s3Client, command, {
       expiresIn: expiresInSeconds,
     });
-    console.log(`Presigned URL generated successfully.`);
     return url;
   } catch (error) {
     console.error(`Failed to generate presigned URL for "${fileName}":`, error);
