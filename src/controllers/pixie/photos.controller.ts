@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { checkFile, downloadFile, uploadFile } from "../../minio/minio";
 import { publishToMQTT } from "../../mqtt/client";
+import { sanitizeFilename } from "../../utils/string-utils";
 
 const prisma = new PrismaClient();
 
@@ -327,7 +328,8 @@ export async function postPublicPhoto(req: Request, res: Response) {
       .toBuffer();
 
     // 📌 Subir la imagen a Minio
-    const fileNameMinio = `public/${Date.now()}_${title}.png`;
+    const sanitizedTitle = sanitizeFilename(title);
+    const fileNameMinio = `public/${Date.now()}_${sanitizedTitle}.png`;
     const photoUrlMinio = await uploadFile(
       processedImage,
       fileNameMinio,

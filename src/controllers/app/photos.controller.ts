@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import sharp from "sharp";
 import { uploadFile } from "../../minio/minio";
 import { publishToMQTT } from "../../mqtt/client";
+import { sanitizeFilename } from "../../utils/string-utils";
 const prisma = new PrismaClient();
 
 async function photoToPixelMatrix(buffer: Buffer) {
@@ -180,7 +181,9 @@ export async function postPhoto(req: Request, res: Response) {
       .toBuffer();
 
     // 📌 Subir la imagen a Minio
-    const fileNameMinio = `${user.username}/${Date.now()}_${title}.png`;
+    const sanitizedUsername = sanitizeFilename(user.username);
+    const sanitizedTitle = sanitizeFilename(title);
+    const fileNameMinio = `${sanitizedUsername}/${Date.now()}_${sanitizedTitle}.png`;
     const photoUrlMinio = await uploadFile(
       processedImage,
       fileNameMinio,
@@ -231,20 +234,6 @@ export async function postPhoto(req: Request, res: Response) {
           },
         });
 
-        /*const pixies = await prisma.pixie.findMany({
-            where: {
-              created_by: visibleUserId,
-            },
-          });
-          for (const pixie of pixies) {
-            await publishToMQTT(
-              `pixie/${pixie.id}`,
-              JSON.stringify({
-                action: "update_photo",
-                id: newPhoto.id,
-              })
-            );
-          }*/
       }
     }
 
