@@ -11,3 +11,15 @@ export type User = {
     username: string;
     picture: string;
 };
+
+export type Pagination = {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+};
+
+export type PaginatedFriendsResponse = {
+    data: Friend[];
+    pagination: Pagination;
+};

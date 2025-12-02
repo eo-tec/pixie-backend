@@ -2,7 +2,7 @@ import prisma from "../../services/prisma";
 import { Request, Response } from "express";
 import { FriendStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
-import { Friend } from "../../types/frontTypes";
+import { Friend, PaginatedFriendsResponse } from "../../types/frontTypes";
 
 
 
@@ -22,28 +22,43 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
   }
-  const friends = await prisma.friends.findMany({
-    where: {
-      OR: [
-        {
-          AND: [
-            { OR: [{ user_id_1: id }, { user_id_2: id }] },
-            { status: FriendStatus.accepted }
-          ]
-        },
-        {
-          AND: [
-            { user_id_2: id },
-            { status: FriendStatus.pending }
-          ]
-        }
-      ]
-    },
-    include: {
-      user1: true,
-      user2: true,
-    },
-  });
+
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const skip = (page - 1) * limit;
+
+  const whereClause = {
+    OR: [
+      {
+        AND: [
+          { OR: [{ user_id_1: id }, { user_id_2: id }] },
+          { status: FriendStatus.accepted }
+        ]
+      },
+      {
+        AND: [
+          { user_id_2: id },
+          { status: FriendStatus.pending }
+        ]
+      }
+    ]
+  };
+
+  const [friends, total] = await Promise.all([
+    prisma.friends.findMany({
+      where: whereClause,
+      include: {
+        user1: true,
+        user2: true,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+      skip,
+      take: limit,
+    }),
+    prisma.friends.count({ where: whereClause }),
+  ]);
 
   const friendsWithStatus = friends.map((friend) => ({
     status: friend.status,
@@ -53,7 +68,18 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
       picture: friend.user1.id === id ? friend.user2.picture : friend.user1.picture,
     },
   }));
-  res.json(friendsWithStatus as Friend[]);
+
+  const response: PaginatedFriendsResponse = {
+    data: friendsWithStatus as Friend[],
+    pagination: {
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
+    },
+  };
+
+  res.json(response);
 };
 
 export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => {
