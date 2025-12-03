@@ -38,11 +38,17 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     return;
   }
 
+  const pixieId = typeof pixie.id === 'string' ? parseInt(pixie.id, 10) : pixie.id;
+  if (isNaN(pixieId)) {
+    res.status(400).json({ error: "ID de pixie inválido" });
+    return;
+  }
+
   try {
     // Verificar que el pixie pertenece al usuario
     const existingPixie = await prisma.pixie.findFirst({
       where: {
-        id: pixie.id,        
+        id: pixieId,
       }
     });
 
@@ -55,12 +61,19 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     // Actualizar el pixie - filtrar solo campos actualizables
     const { id, created_at, created_by, mac, ...updateData } = pixie;
     const updatedPixie = await prisma.pixie.update({
-      where: { id: pixie.id },
+      where: { id: pixieId },
       data: updateData
     });
 
-    // Enviar mensaje MQTT
-    publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({action: "update_info", pixie: updatedPixie}));
+    // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
+    publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({
+      action: "update_info",
+      brightness: updatedPixie.brightness,
+      pictures_on_queue: updatedPixie.pictures_on_queue,
+      spotify_enabled: updatedPixie.spotify_enabled,
+      secs_between_photos: updatedPixie.secs_between_photos,
+      code: updatedPixie.code
+    }));
 
     res.status(200).json({ pixie: updatedPixie });
   } catch (error) {
@@ -128,8 +141,15 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
-    // Enviar mensaje MQTT
-    publishToMQTT(`pixie/${updatedPixie.id}`, JSON.stringify({action: "update_info", pixie: updatedPixie}));
+    // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
+    publishToMQTT(`pixie/${updatedPixie.id}`, JSON.stringify({
+      action: "update_info",
+      brightness: updatedPixie.brightness,
+      pictures_on_queue: updatedPixie.pictures_on_queue,
+      spotify_enabled: updatedPixie.spotify_enabled,
+      secs_between_photos: updatedPixie.secs_between_photos,
+      code: updatedPixie.code
+    }));
 
     res.status(200).json({ pixie: updatedPixie });
   } catch (error) {
