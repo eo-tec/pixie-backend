@@ -171,8 +171,9 @@ export async function postPhoto(req: Request, res: Response) {
     }
 
 
-    // 📌 Convertir la imagen de Base64 a Buffer
-    const fileBuffer = Buffer.from(photoFile, "base64");
+    // 📌 Convertir la imagen de Base64 a Buffer (eliminar prefijo data:image si existe)
+    const base64Data = photoFile.includes(',') ? photoFile.split(',')[1] : photoFile;
+    const fileBuffer = Buffer.from(base64Data, "base64");
 
     const processedImage = await sharp(fileBuffer)
       .rotate() // 🔥 Corrige la rotación automáticamente según EXIF
