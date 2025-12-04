@@ -4,13 +4,15 @@ import {
   handleCoverRequest,
   handlePhotoRequest,
   handleOtaRequest,
-  handleConfigRequest
+  handleConfigRequest,
+  handleRegisterRequest
 } from './handlers';
 
 // Configuración MQTT
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com';
 const MQTT_TOPIC = 'pixie/photos';
 const MQTT_REQUEST_TOPIC = 'pixie/+/request/#';
+const MQTT_REGISTER_TOPIC = 'pixie/mac/+/request/register';
 
 let client: mqtt.MqttClient;
 
@@ -31,6 +33,15 @@ export const connectMQTT = () => {
         console.log(`📥 Suscrito a ${MQTT_REQUEST_TOPIC}`);
       }
     });
+
+    // Suscribirse a requests de registro (por MAC)
+    client.subscribe(MQTT_REGISTER_TOPIC, { qos: 1 }, (err) => {
+      if (err) {
+        console.error('❌ Error suscribiéndose a register:', err);
+      } else {
+        console.log(`📥 Suscrito a ${MQTT_REGISTER_TOPIC}`);
+      }
+    });
   });
 
   client.on('error', (err) => {
@@ -42,8 +53,17 @@ export const connectMQTT = () => {
 
 // Router de mensajes MQTT
 async function handleMqttMessage(topic: string, payload: Buffer) {
-  // Parsear topic: pixie/{pixieId}/request/{type}
   const parts = topic.split('/');
+
+  // Manejar registro por MAC: pixie/mac/{MAC}/request/register
+  if (parts.length >= 5 && parts[0] === 'pixie' && parts[1] === 'mac' && parts[3] === 'request' && parts[4] === 'register') {
+    const mac = parts[2];
+    console.log(`📨 [MQTT] Register request para MAC: ${mac}`);
+    await handleRegisterRequest(mac);
+    return;
+  }
+
+  // Parsear topic: pixie/{pixieId}/request/{type}
   if (parts.length < 4 || parts[0] !== 'pixie' || parts[2] !== 'request') {
     return; // No es un request válido
   }

@@ -9,6 +9,49 @@ import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '
 import { publishBinary, publishToMQTT } from './client';
 
 // ============================================================================
+// HANDLER: Register Request (via MQTT)
+// Topic: pixie/mac/{MAC}/request/register -> pixie/mac/{MAC}/response/register
+// Response: {"pixieId": N, "code": "0000"}
+// ============================================================================
+export async function handleRegisterRequest(mac: string): Promise<void> {
+  const responseTopic = `pixie/mac/${mac}/response/register`;
+
+  try {
+    console.log(`[MQTT:register] Solicitud de registro para MAC: ${mac}`);
+
+    // Buscar pixie existente por MAC
+    let pixie = await prisma.pixie.findFirst({
+      where: { mac: mac }
+    });
+
+    if (pixie) {
+      console.log(`[MQTT:register] Pixie existente encontrado: ${pixie.id}`);
+    } else {
+      // Crear nuevo pixie con code "0000"
+      pixie = await prisma.pixie.create({
+        data: {
+          mac: mac,
+          name: "Pixie",
+          code: "0000",
+          pictures_on_queue: 5
+        }
+      });
+      console.log(`[MQTT:register] Nuevo pixie creado: ${pixie.id}`);
+    }
+
+    // Enviar respuesta
+    publishToMQTT(responseTopic, {
+      pixieId: pixie.id,
+      code: pixie.code || "0000"
+    });
+
+    console.log(`[MQTT:register] Respuesta enviada a ${responseTopic}`);
+  } catch (err) {
+    console.error(`[MQTT:register] Error para MAC ${mac}:`, err);
+  }
+}
+
+// ============================================================================
 // HELPER: Obtener credenciales Spotify para un Pixie
 // ============================================================================
 async function getSpotifyCredentialsForPixie(pixie_id: number) {

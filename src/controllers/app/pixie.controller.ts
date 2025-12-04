@@ -1,8 +1,39 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT } from '../../mqtt/client';
 import { pixie } from "@prisma/client";
+
+// Endpoint para verificar si un frame está registrado (usado durante provisioning BLE)
+export const checkFrameRegistration = async (req: Request, res: Response) => {
+  const { frameToken } = req.params;
+
+  if (!frameToken) {
+    res.status(400).json({ error: "frameToken is required" });
+    return;
+  }
+
+  try {
+    // Buscar pixie por MAC (frameToken es la MAC con ":")
+    const pixie = await prisma.pixie.findFirst({
+      where: { mac: frameToken }
+    });
+
+    if (pixie) {
+      res.status(200).json({
+        registered: true,
+        frameId: pixie.id
+      });
+    } else {
+      res.status(200).json({
+        registered: false
+      });
+    }
+  } catch (error) {
+    console.error("Error checking frame registration:", error);
+    res.status(500).json({ error: "Error checking frame registration" });
+  }
+};
 
 export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
   const id = req.user?.id;
@@ -178,6 +209,68 @@ export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
   } catch (error) {
     console.error("Error al enviar comando de reset:", error);
     res.status(500).json({ error: "Error al enviar comando de reset" });
+  }
+};
+
+// Registrar un frame con el usuario actual (asociar pixie al usuario)
+// Acepta MAC address como identificador
+export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Response) => {
+  const { frameToken } = req.params;  // MAC address como "78:1C:3C:A5:B4:5C"
+  const { name } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!frameToken) {
+    res.status(400).json({ error: "frameToken (MAC) es requerido" });
+    return;
+  }
+
+  try {
+    // Buscar el pixie por MAC
+    const pixie = await prisma.pixie.findFirst({
+      where: { mac: frameToken }
+    });
+
+    if (!pixie) {
+      res.status(404).json({ error: "Frame no encontrado" });
+      return;
+    }
+
+    // Verificar que el frame no esté ya asociado a otro usuario
+    if (pixie.created_by && pixie.created_by !== userId) {
+      res.status(403).json({ error: "Este frame ya está asociado a otro usuario" });
+      return;
+    }
+
+    // Actualizar el pixie con el usuario y nombre
+    const updatedPixie = await prisma.pixie.update({
+      where: { id: pixie.id },
+      data: {
+        created_by: userId,
+        name: name || pixie.name || "Pixie"
+      }
+    });
+
+    console.log(`[Pixie] Frame ${pixie.id} (MAC: ${frameToken}) registrado con usuario ${userId}`);
+
+    // Enviar config al frame via MQTT
+    publishToMQTT(`pixie/${pixie.id}`, JSON.stringify({
+      action: "update_info",
+      brightness: updatedPixie.brightness,
+      pictures_on_queue: updatedPixie.pictures_on_queue,
+      spotify_enabled: updatedPixie.spotify_enabled,
+      secs_between_photos: updatedPixie.secs_between_photos,
+      code: updatedPixie.code
+    }));
+
+    res.status(200).json({ pixie: updatedPixie });
+  } catch (error) {
+    console.error("Error registrando frame con usuario:", error);
+    res.status(500).json({ error: "Error al registrar el frame" });
   }
 };
 
