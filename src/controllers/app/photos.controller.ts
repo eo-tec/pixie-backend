@@ -67,25 +67,36 @@ export async function getPhotosFromUser(
   const skip = (page - 1) * pageSize;
 
   try {
+    // Obtener IDs de amigos aceptados
+    const friends = await prisma.friends.findMany({
+      where: {
+        status: 'accepted',
+        OR: [
+          { user_id_1: id },
+          { user_id_2: id }
+        ]
+      }
+    });
+    const friendIds = friends.map(f => f.user_id_1 === id ? f.user_id_2 : f.user_id_1);
+
+    // Query con fotos propias, compartidas conmigo, y públicas de amigos
+    const whereClause = {
+      deleted_at: null,
+      OR: [
+        { user_id: id },                                    // Mis fotos
+        { visible_by: { some: { user_id: id } } },          // Compartidas conmigo
+        ...(friendIds.length > 0 ? [{                       // Públicas de amigos
+          is_public: true,
+          user_id: { in: friendIds }
+        }] : [])
+      ],
+    };
+
     const photos = await prisma.photos.findMany({
       skip: skip,
       take: pageSize,
       distinct: ["photo_url"],
-      where: {
-        deleted_at: null,
-        OR: [
-          {
-            visible_by: {
-              some: {
-                user_id: id,
-              },
-            },
-          },
-          {
-            user_id: id,
-          },
-        ],
-      },
+      where: whereClause,
       select: {
         id: true,
         created_at: true,
@@ -93,6 +104,7 @@ export async function getPhotosFromUser(
         username: true,
         title: true,
         user_id: true,
+        is_public: true,
         users: true,
         photo_groups: true,
       },
@@ -102,21 +114,7 @@ export async function getPhotosFromUser(
     });
 
     const totalPhotos = await prisma.photos.count({
-      where: {
-        deleted_at: null,
-        OR: [
-          {
-            visible_by: {
-              some: {
-                user_id: id,
-              },
-            },
-          },
-          {
-            user_id: id,
-          },
-        ],
-      },
+      where: whereClause,
     });
 
     if (!photos) {
@@ -152,7 +150,7 @@ export async function imageToRGB565(buffer: Buffer) {
 
 export async function postPhoto(req: Request, res: Response) {
   try {
-    const { userId, title, photoFile, usersId } = req.body;
+    const { userId, title, photoFile, usersId, isPublic } = req.body;
 
     if (!userId || !photoFile) {
       res.status(400).send("Error: datos incompletos.");
@@ -202,6 +200,7 @@ export async function postPhoto(req: Request, res: Response) {
         username: user.username,
         created_at: new Date(),
         photo_pixels: await photoToPixelMatrix(processedImage),
+        is_public: isPublic ?? false,
       },
       include: {
         users: true,

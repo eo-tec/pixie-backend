@@ -63,6 +63,7 @@ model photos {
   user_id      Int?
   photo_pixels Json                     @default("{}")
   deleted_at   DateTime?                @db.Timestamptz(6)
+  is_public    Boolean                  @default(false)
   photo_groups photo_groups[]
   visible_by   photo_visible_by_users[]
   users        public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

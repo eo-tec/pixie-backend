@@ -255,13 +255,31 @@ export async function handlePhotoRequest(
         return;
       }
 
+      // Obtener IDs de amigos aceptados del propietario del pixie
+      const friends = await prisma.friends.findMany({
+        where: {
+          status: 'accepted',
+          OR: [
+            { user_id_1: pixie.created_by },
+            { user_id_2: pixie.created_by }
+          ]
+        }
+      });
+      const friendIds = friends.map(f =>
+        f.user_id_1 === pixie.created_by ? f.user_id_2 : f.user_id_1
+      );
+
       const photos = await prisma.photos.findMany({
         where: {
           AND: [
             {
               OR: [
-                { visible_by: { some: { user_id: pixie.created_by } } },
-                { user_id: pixie.created_by }
+                { user_id: pixie.created_by },                        // Fotos propias
+                { visible_by: { some: { user_id: pixie.created_by } } }, // Compartidas conmigo
+                ...(friendIds.length > 0 ? [{                         // Públicas de amigos
+                  is_public: true,
+                  user_id: { in: friendIds }
+                }] : [])
               ]
             },
             { deleted_at: null }
@@ -374,13 +392,31 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
     // Contar fotos disponibles para este pixie
     let picturesOnQueue = 0;
     if (pixie.created_by) {
+      // Obtener IDs de amigos aceptados del propietario del pixie
+      const friends = await prisma.friends.findMany({
+        where: {
+          status: 'accepted',
+          OR: [
+            { user_id_1: pixie.created_by },
+            { user_id_2: pixie.created_by }
+          ]
+        }
+      });
+      const friendIds = friends.map(f =>
+        f.user_id_1 === pixie.created_by ? f.user_id_2 : f.user_id_1
+      );
+
       const photoCount = await prisma.photos.count({
         where: {
           AND: [
             {
               OR: [
-                { visible_by: { some: { user_id: pixie.created_by } } },
-                { user_id: pixie.created_by }
+                { user_id: pixie.created_by },                        // Fotos propias
+                { visible_by: { some: { user_id: pixie.created_by } } }, // Compartidas conmigo
+                ...(friendIds.length > 0 ? [{                         // Públicas de amigos
+                  is_public: true,
+                  user_id: { in: friendIds }
+                }] : [])
               ]
             },
             { deleted_at: null }
