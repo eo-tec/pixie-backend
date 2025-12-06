@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility } from '../../controllers/app/photos.controller';
 import { verifyAuth } from './checkUser';
 import { Request, Response } from 'express';
-import { getUser, getFriends } from '../../controllers/app/user.controller';
+import { getUser, getFriends, updateProfile } from '../../controllers/app/user.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
@@ -26,6 +26,7 @@ privateRouter.get('/photo/:id/visibility', getPhotoVisibility);
 privateRouter.put('/photo/:id/visibility', updatePhotoVisibility);
 
 privateRouter.get('/me', getUser);
+privateRouter.put('/me', updateProfile);
 //privateRouter.get('/friends', getFriends);
 
 privateRouter.get('/pixie/photo/:id', showPhoto);

@@ -118,6 +118,7 @@ model public_users {
   password                String?
   telegram_id             String?
   picture                 String?
+  bio                     String?
   user_id                 String?                  @unique
   friends_sent            friends[]                @relation("SentFriendships")
   friends_received        friends[]                @relation("ReceivedFriendships")

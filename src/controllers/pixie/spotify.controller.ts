@@ -464,7 +464,7 @@ export async function isLogged(req: Request, res: Response) {
 
     if (!user_id) {
       res.status(400).json({ error: 'Se requiere el user_id' });
-      return 
+      return
     }
 
     // Primero buscamos el usuario por su user_id para obtener su id
@@ -476,7 +476,7 @@ export async function isLogged(req: Request, res: Response) {
 
     if (!user) {
       res.status(404).json({ error: 'Usuario no encontrado' });
-      return 
+      return
     }
 
     // Buscamos las credenciales de Spotify usando el id del usuario
@@ -488,12 +488,47 @@ export async function isLogged(req: Request, res: Response) {
 
     if (!credentials) {
       res.json({ credentials: null });
-      return 
+      return
     }
 
     res.json({ credentials });
   } catch (err) {
     console.error('Error al verificar credenciales:', err);
     res.status(500).json({ error: 'Error al verificar las credenciales de Spotify' });
+  }
+}
+
+export async function unlinkSpotify(req: Request, res: Response) {
+  try {
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      res.status(400).json({ error: 'Se requiere el user_id' });
+      return;
+    }
+
+    // Buscamos el usuario por su user_id (UUID de Supabase)
+    const user = await prisma.public_users.findFirst({
+      where: {
+        user_id: user_id as string,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'Usuario no encontrado' });
+      return;
+    }
+
+    // Eliminamos las credenciales de Spotify del usuario
+    await prisma.spotify_credentials.deleteMany({
+      where: {
+        user_id: user.id,
+      },
+    });
+
+    res.json({ message: 'Spotify desvinculado correctamente' });
+  } catch (err) {
+    console.error('Error al desvincular Spotify:', err);
+    res.status(500).json({ error: 'Error al desvincular Spotify' });
   }
 }
