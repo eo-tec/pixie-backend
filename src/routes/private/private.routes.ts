@@ -9,6 +9,8 @@ import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
 import { drawingRouter } from './drawing.routes';
 import { pixiesRouter } from './pixies.routes';
+import { reactionsRouter } from './reactions.routes';
+import { commentsRouter } from './comments.routes';
 // Otras rutas que tengas
 
 export const privateRouter = Router();
@@ -45,3 +47,7 @@ privateRouter.use('/pixies', pixiesRouter);
 
 // Drawing routes
 privateRouter.use('/', drawingRouter);
+
+// Reactions and comments routes
+privateRouter.use('/photos', reactionsRouter);
+privateRouter.use('/photos', commentsRouter);

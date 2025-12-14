@@ -107,6 +107,17 @@ export async function getPhotosFromUser(
         is_public: true,
         users: true,
         photo_groups: true,
+        _count: {
+          select: {
+            reactions: true,
+            comments: { where: { deleted_at: null } },
+          },
+        },
+        reactions: {
+          where: { user_id: id },
+          select: { type: true },
+          take: 1,
+        },
       },
       orderBy: {
         created_at: "desc",

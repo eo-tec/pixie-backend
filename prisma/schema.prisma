@@ -67,6 +67,8 @@ model photos {
   photo_groups photo_groups[]
   visible_by   photo_visible_by_users[]
   users        public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reactions    photo_reactions[]
+  comments     photo_comments[]
 
   @@schema("public")
 }
@@ -130,6 +132,8 @@ model public_users {
   received_private_photos private_photos[]         @relation("ReceivedPrivatePhotos")
   sent_private_photos     private_photos[]         @relation("SentPrivatePhotos")
   spotify_credentials     spotify_credentials?
+  photo_reactions         photo_reactions[]
+  photo_comments          photo_comments[]
 
   @@map("users")
   @@schema("public")
@@ -183,6 +187,15 @@ enum FriendStatus {
   @@schema("public")
 }
 
+enum ReactionType {
+  like
+  laugh
+  wow
+  sad
+
+  @@schema("public")
+}
+
 model drawings {
   id               Int                @id @default(autoincrement())
   pixie_id         Int
@@ -207,6 +220,32 @@ model drawing_sessions {
   updated_at   DateTime     @default(now()) @db.Timestamptz(6)
   pixie        pixie        @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
   drawing      drawings?    @relation(fields: [drawing_id], references: [id], onDelete: SetNull)
+
+  @@schema("public")
+}
+
+model photo_reactions {
+  id         Int          @id @default(autoincrement())
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  photo_id   Int
+  user_id    Int
+  type       ReactionType
+  photo      photos       @relation(fields: [photo_id], references: [id], onDelete: Cascade)
+  user       public_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([photo_id, user_id])
+  @@schema("public")
+}
+
+model photo_comments {
+  id         Int          @id @default(autoincrement())
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  photo_id   Int
+  user_id    Int
+  content    String       @db.VarChar(500)
+  deleted_at DateTime?    @db.Timestamptz(6)
+  photo      photos       @relation(fields: [photo_id], references: [id], onDelete: Cascade)
+  user       public_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
