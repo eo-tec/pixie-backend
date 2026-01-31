@@ -21,29 +21,46 @@ let ACCESS_TOKEN = null;
 const REFRESH_TOKEN_FILE = '../../refresh_token.cache';
 
 export async function login(req: Request, res: Response) {
-  // Creas la URL de autorización
   const scopes = ['user-read-currently-playing', 'user-read-playback-state', 'user-read-private'];
-  const state = 'someRandomState'; // replace with a valid state value as needed
+  // Pass the user_id (Supabase UUID) as state to recover it in callback
+  const state = (req.query.state as string) || 'unknown';
   const authorizeURL = spotifyService.getApi().createAuthorizeURL(scopes, state);
   res.redirect(authorizeURL);
 }
 
 export async function callback(req: Request, res: Response) {
   const code = req.query.code || null;
-  const user_id = req.query.state || null;
+  const supabase_user_id = req.query.state || null; // This is now the Supabase UUID
+
   if (!code) {
     res.status(400).json({ error: 'Falta el parámetro "code"' });
     return;
   }
 
+  if (!supabase_user_id) {
+    res.status(400).json({ error: 'Falta el parámetro "state" (user_id)' });
+    return;
+  }
+
   try {
+    // Find the user by Supabase UUID
+    const user = await prisma.public_users.findFirst({
+      where: {
+        user_id: supabase_user_id as string,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'Usuario no encontrado' });
+      return;
+    }
+
     const data = await spotifyService.getApi().authorizationCodeGrant(code as string);
 
-
-    if (data){
-      const spotify_credentials = await prisma.spotify_credentials.upsert({
+    if (data) {
+      await prisma.spotify_credentials.upsert({
         where: {
-          user_id: parseInt(user_id as string),
+          user_id: user.id, // Use the internal DB id
         },
         update: {
           spotify_secret: data.body.access_token,
@@ -51,21 +68,21 @@ export async function callback(req: Request, res: Response) {
           expires_at: new Date(Date.now() + data.body.expires_in * 1000),
         },
         create: {
-          spotify_id: user_id as string,
+          spotify_id: supabase_user_id as string,
           spotify_secret: data.body.access_token,
           spotify_refresh_token: data.body.refresh_token,
           expires_at: new Date(Date.now() + data.body.expires_in * 1000),
-          user_id: parseInt(user_id as string)
+          user_id: user.id, // Use the internal DB id
         },
       });
-
     }
 
-    res.redirect(process.env.SETTINGS_URI || "https://app.mypixelframe.com/settings");
-    
+    // Redirect to deep link so the app can refresh user data
+    res.redirect('ffframe://spotify-linked');
+
   } catch (err) {
     console.error('Error en el intercambio de tokens:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener el token',
       details: err instanceof Error ? err.message : 'Error desconocido'
     });

@@ -118,6 +118,19 @@ export async function getPhotosFromUser(
           select: { type: true },
           take: 1,
         },
+        comments: {
+          where: { deleted_at: null },
+          orderBy: { created_at: 'desc' },
+          take: 2,
+          select: {
+            id: true,
+            content: true,
+            created_at: true,
+            user: {
+              select: { id: true, username: true, picture: true },
+            },
+          },
+        },
       },
       orderBy: {
         created_at: "desc",
