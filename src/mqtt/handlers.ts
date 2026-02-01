@@ -381,7 +381,8 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
 
   try {
     const pixie = await prisma.pixie.findUnique({
-      where: { id: pixieId }
+      where: { id: pixieId },
+      include: { users: true }
     });
 
     if (!pixie) {
@@ -394,7 +395,13 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       pictures_on_queue: pixie.pictures_on_queue ?? 5,
       spotify_enabled: pixie.spotify_enabled ?? false,
       secs_between_photos: pixie.secs_between_photos ?? 30,
-      code: pixie.code ?? ''
+      code: pixie.code ?? '',
+      schedule_enabled: pixie.schedule_enabled ?? false,
+      schedule_on_hour: pixie.schedule_on_hour ?? 8,
+      schedule_on_minute: pixie.schedule_on_minute ?? 0,
+      schedule_off_hour: pixie.schedule_off_hour ?? 22,
+      schedule_off_minute: pixie.schedule_off_minute ?? 0,
+      timezone_offset: pixie.users?.timezone_offset ?? 0
     });
 
     console.log(`[MQTT:config] Config enviada a pixie ${pixieId}`);

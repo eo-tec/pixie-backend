@@ -85,6 +85,11 @@ model pixie {
   secs_between_photos Int?               @default(60)
   spotify_enabled     Boolean            @default(false)
   allow_draws         Boolean            @default(false)
+  schedule_enabled    Boolean            @default(false)
+  schedule_on_hour    Int?               @default(8)
+  schedule_on_minute  Int?               @default(0)
+  schedule_off_hour   Int?               @default(22)
+  schedule_off_minute Int?               @default(0)
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
@@ -122,6 +127,7 @@ model public_users {
   picture                 String?
   bio                     String?
   user_id                 String?                  @unique
+  timezone_offset         Int?                     @default(0)
   friends_sent            friends[]                @relation("SentFriendships")
   friends_received        friends[]                @relation("ReceivedFriendships")
   group_suscriber         group_suscriber[]

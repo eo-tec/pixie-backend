@@ -32,8 +32,47 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
             picture: user.picture,
             bio: user.bio,
             spotify_id: user.spotify_credentials ? user.spotify_credentials.spotify_id : null,
+            timezone_offset: user.timezone_offset ?? 0,
         }
     });
+}
+
+async function updateTimezone(req: AuthenticatedRequest, res: Response) {
+    const id = req.user?.id;
+    if (!id) {
+        res.status(401).json({ error: 'Usuario no autenticado' });
+        return;
+    }
+
+    const { timezone_offset } = req.body;
+
+    if (typeof timezone_offset !== 'number') {
+        res.status(400).json({ error: 'timezone_offset debe ser un número' });
+        return;
+    }
+
+    // Validar que el offset esté en un rango razonable (-720 a +840 minutos)
+    if (timezone_offset < -720 || timezone_offset > 840) {
+        res.status(400).json({ error: 'timezone_offset fuera de rango válido' });
+        return;
+    }
+
+    try {
+        const updatedUser = await prisma.public_users.update({
+            where: { id },
+            data: { timezone_offset }
+        });
+
+        res.status(200).json({
+            user: {
+                id: updatedUser.id,
+                timezone_offset: updatedUser.timezone_offset
+            }
+        });
+    } catch (error) {
+        console.error('Error updating timezone:', error);
+        res.status(500).json({ error: 'Error al actualizar la zona horaria' });
+    }
 }
 
 async function getFriends(req: AuthenticatedRequest, res: Response) {
@@ -213,4 +252,4 @@ async function updateProfile(req: AuthenticatedRequest, res: Response) {
     }
 }
 
-export { getUser, getFriends, updateProfile };
+export { getUser, getFriends, updateProfile, updateTimezone };

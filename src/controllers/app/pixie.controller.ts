@@ -96,6 +96,11 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       data: updateData
     });
 
+    // Obtener timezone del usuario dueño del frame
+    const user = existingPixie.created_by
+      ? await prisma.public_users.findUnique({ where: { id: existingPixie.created_by } })
+      : null;
+
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
     publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({
       action: "update_info",
@@ -103,7 +108,13 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       pictures_on_queue: updatedPixie.pictures_on_queue,
       spotify_enabled: updatedPixie.spotify_enabled,
       secs_between_photos: updatedPixie.secs_between_photos,
-      code: updatedPixie.code
+      code: updatedPixie.code,
+      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_on_hour: updatedPixie.schedule_on_hour,
+      schedule_on_minute: updatedPixie.schedule_on_minute,
+      schedule_off_hour: updatedPixie.schedule_off_hour,
+      schedule_off_minute: updatedPixie.schedule_off_minute,
+      timezone_offset: user?.timezone_offset ?? 0
     }));
 
     res.status(200).json({ pixie: updatedPixie });
@@ -172,6 +183,9 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
+    // Obtener timezone del usuario dueño del frame
+    const user = await prisma.public_users.findUnique({ where: { id: userId } });
+
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
     publishToMQTT(`pixie/${updatedPixie.id}`, JSON.stringify({
       action: "update_info",
@@ -179,7 +193,13 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       pictures_on_queue: updatedPixie.pictures_on_queue,
       spotify_enabled: updatedPixie.spotify_enabled,
       secs_between_photos: updatedPixie.secs_between_photos,
-      code: updatedPixie.code
+      code: updatedPixie.code,
+      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_on_hour: updatedPixie.schedule_on_hour,
+      schedule_on_minute: updatedPixie.schedule_on_minute,
+      schedule_off_hour: updatedPixie.schedule_off_hour,
+      schedule_off_minute: updatedPixie.schedule_off_minute,
+      timezone_offset: user?.timezone_offset ?? 0
     }));
 
     res.status(200).json({ pixie: updatedPixie });
@@ -257,6 +277,9 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
 
     console.log(`[Pixie] Frame ${pixie.id} (MAC: ${frameToken}) registrado con usuario ${userId}`);
 
+    // Obtener timezone del usuario dueño del frame
+    const user = await prisma.public_users.findUnique({ where: { id: userId } });
+
     // Enviar config al frame via MQTT
     publishToMQTT(`pixie/${pixie.id}`, JSON.stringify({
       action: "update_info",
@@ -264,7 +287,13 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       pictures_on_queue: updatedPixie.pictures_on_queue,
       spotify_enabled: updatedPixie.spotify_enabled,
       secs_between_photos: updatedPixie.secs_between_photos,
-      code: updatedPixie.code
+      code: updatedPixie.code,
+      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_on_hour: updatedPixie.schedule_on_hour,
+      schedule_on_minute: updatedPixie.schedule_on_minute,
+      schedule_off_hour: updatedPixie.schedule_off_hour,
+      schedule_off_minute: updatedPixie.schedule_off_minute,
+      timezone_offset: user?.timezone_offset ?? 0
     }));
 
     res.status(200).json({ pixie: updatedPixie });
