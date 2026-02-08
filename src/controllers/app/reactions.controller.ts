@@ -19,7 +19,7 @@ export async function getPhotoReactions(
   res: Response
 ) {
   const userId = req.user?.id;
-  const { photoId } = req.params;
+  const photoId = req.params.photoId as string;
 
   if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
@@ -68,7 +68,7 @@ export async function getPhotoReactions(
 
 export async function addReaction(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const { photoId } = req.params;
+  const photoId = req.params.photoId as string;
   const { type } = req.body;
 
   if (!userId) {
@@ -126,7 +126,7 @@ export async function addReaction(req: AuthenticatedRequest, res: Response) {
 
 export async function removeReaction(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const { photoId } = req.params;
+  const photoId = req.params.photoId as string;
 
   if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });

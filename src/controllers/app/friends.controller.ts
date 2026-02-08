@@ -8,7 +8,7 @@ import { Friend, PaginatedFriendsResponse } from "../../types/frontTypes";
 
 
 export const getFriend = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const friend = await prisma.friends.findUnique({
     where: { id: parseInt(id) },
   });
@@ -85,7 +85,7 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
 export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id;
 
-  const { id } = req.params;
+  const id = req.params.id as string;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
@@ -116,7 +116,7 @@ export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => 
 export const declineFriend = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id;
 
-  const { id } = req.params;
+  const id = req.params.id as string;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
@@ -145,7 +145,7 @@ export const declineFriend = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 export const addFriend = async (req: AuthenticatedRequest, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
@@ -178,7 +178,7 @@ export const addFriend = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const deleteFriend = async (req: AuthenticatedRequest, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   if (!id) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;

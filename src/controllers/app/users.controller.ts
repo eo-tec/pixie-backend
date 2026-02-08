@@ -5,7 +5,7 @@ import { User } from "../../types/frontTypes";
 import { cleanUsername } from "../../utils/string-utils";
 
 export const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
-  const { username } = req.params;
+  const username = req.params.username as string;
   const id = req.user?.id;
   if (!username) {
     res.status(400).json({ error: "Nombre de usuario no proporcionado" });
@@ -98,7 +98,7 @@ export const newUser = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) => {
-  const { username } = req.params;
+  const username = req.params.username as string;
   const currentUserId = req.user?.id;
   
   if (!currentUserId) {

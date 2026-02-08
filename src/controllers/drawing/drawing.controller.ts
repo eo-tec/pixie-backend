@@ -8,7 +8,7 @@ const drawingService = new DrawingService();
 // Start drawing session for a device
 export const startDrawingSession = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId } = req.params;
+    const pixieId = req.params.pixieId as string;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -52,7 +52,7 @@ export const startDrawingSession = async (req: AuthenticatedRequest, res: Respon
 // End drawing session for a device
 export const endDrawingSession = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId } = req.params;
+    const pixieId = req.params.pixieId as string;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -91,7 +91,7 @@ export const endDrawingSession = async (req: AuthenticatedRequest, res: Response
 // Save current drawing
 export const saveDrawing = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId } = req.params;
+    const pixieId = req.params.pixieId as string;
     const { name, pixels } = req.body;
     const userId = req.user?.id;
 
@@ -136,7 +136,8 @@ export const saveDrawing = async (req: AuthenticatedRequest, res: Response) => {
 // Load saved drawing
 export const loadDrawing = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId, drawingId } = req.params;
+    const pixieId = req.params.pixieId as string;
+    const drawingId = req.params.drawingId as string;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -179,7 +180,7 @@ export const loadDrawing = async (req: AuthenticatedRequest, res: Response) => {
 // Get all drawings for a device
 export const getDrawings = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId } = req.params;
+    const pixieId = req.params.pixieId as string;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -217,7 +218,7 @@ export const getDrawings = async (req: AuthenticatedRequest, res: Response) => {
 // Clear drawing canvas
 export const clearDrawing = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { pixieId } = req.params;
+    const pixieId = req.params.pixieId as string;
     const userId = req.user?.id;
 
     if (!userId) {

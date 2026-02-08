@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
-import { publishToMQTT } from '../../mqtt/client';
+import { publishToMQTT, isFrameOnline, getFrameLastSeen } from '../../mqtt/client';
 import { pixie } from "@prisma/client";
 
 // Endpoint para verificar si un frame está registrado (usado durante provisioning BLE)
 export const checkFrameRegistration = async (req: Request, res: Response) => {
-  const { frameToken } = req.params;
+  const frameToken = req.params.frameToken as string;
 
   if (!frameToken) {
     res.status(400).json({ error: "frameToken is required" });
@@ -47,9 +47,42 @@ export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
       where: {
         created_by: id,
       },
+      include: {
+        current_photo: {
+          select: {
+            id: true,
+            title: true,
+            username: true,
+            photo_url: true,
+          },
+        },
+      },
     });
 
-    res.status(200).json({ pixies });
+    const enrichedPixies = pixies.map((p) => ({
+      ...p,
+      is_online: isFrameOnline(p.id),
+      last_seen: getFrameLastSeen(p.id)?.toISOString() ?? null,
+      current_photo: p.current_photo
+        ? {
+            id: p.current_photo.id,
+            title: p.current_photo.title,
+            author: p.current_photo.username,
+            photo_url: p.current_photo.photo_url,
+          }
+        : null,
+      current_song: p.current_song_id
+        ? {
+            id: p.current_song_id,
+            name: p.current_song_name,
+          }
+        : null,
+      current_photo_id: undefined,
+      current_song_id: undefined,
+      current_song_name: undefined,
+    }));
+
+    res.status(200).json({ pixies: enrichedPixies });
   } catch (error) {
     res.status(500).json({ error: "Error al obtener los pixies del usuario" });
   }
@@ -90,7 +123,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     // Actualizar el pixie - filtrar solo campos actualizables
-    const { id, created_at, created_by, mac, ...updateData } = pixie;
+    const { id, created_at, created_by, mac, current_photo_id, current_song_id, current_song_name, ...updateData } = pixie;
     const updatedPixie = await prisma.pixie.update({
       where: { id: pixieId },
       data: updateData
@@ -126,7 +159,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const showPhoto = async (req: AuthenticatedRequest, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const pixies = await prisma.pixie.findMany({
     where: {
@@ -212,7 +245,7 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const pixieId = parseInt(id, 10);
   if (isNaN(pixieId)) {
@@ -237,7 +270,7 @@ export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
 // Registrar un frame con el usuario actual (asociar pixie al usuario)
 // Acepta MAC address como identificador
 export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Response) => {
-  const { frameToken } = req.params;  // MAC address como "78:1C:3C:A5:B4:5C"
+  const frameToken = req.params.frameToken as string;  // MAC address como "78:1C:3C:A5:B4:5C"
   const { name } = req.body;
   const userId = req.user?.id;
 
@@ -307,7 +340,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
 };
 
 export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Response) => {
-  const { username } = req.params;
+  const username = req.params.username as string;
   const requesterId = req.user?.id;
   
   

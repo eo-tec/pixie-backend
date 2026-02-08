@@ -275,7 +275,7 @@ export async function postPhoto(req: Request, res: Response) {
 }
 
 export async function deletePhoto(req: AuthenticatedRequest, res: Response) {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const userId = req.user?.id;
 
   if (!userId) {
@@ -314,7 +314,7 @@ export async function deletePhoto(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function getPhotoVisibility(req: AuthenticatedRequest, res: Response) {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const userId = req.user?.id;
 
   if (!userId) {
@@ -362,7 +362,7 @@ export async function getPhotoVisibility(req: AuthenticatedRequest, res: Respons
 }
 
 export async function updatePhotoVisibility(req: AuthenticatedRequest, res: Response) {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { userIds } = req.body;
   const userId = req.user?.id;
 

@@ -68,7 +68,8 @@ model photos {
   visible_by   photo_visible_by_users[]
   users        public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reactions    photo_reactions[]
-  comments     photo_comments[]
+  comments            photo_comments[]
+  currently_on_pixies pixie[]              @relation("CurrentPhoto")
 
   @@schema("public")
 }
@@ -91,7 +92,11 @@ model pixie {
   schedule_off_hour   Int?               @default(22)
   schedule_off_minute Int?               @default(0)
   clock_enabled       Boolean            @default(false)
+  current_photo_id    Int?
+  current_song_id     String?
+  current_song_name   String?
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  current_photo       photos?            @relation("CurrentPhoto", fields: [current_photo_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
 

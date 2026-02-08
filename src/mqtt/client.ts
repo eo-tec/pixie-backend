@@ -8,6 +8,24 @@ import {
   handleRegisterRequest
 } from './handlers';
 
+// Frame online tracking (in-memory)
+const frameLastSeen = new Map<number, Date>();
+const ONLINE_THRESHOLD_MS = 60_000;
+
+export function updateFrameLastSeen(pixieId: number): void {
+  frameLastSeen.set(pixieId, new Date());
+}
+
+export function isFrameOnline(pixieId: number): boolean {
+  const lastSeen = frameLastSeen.get(pixieId);
+  if (!lastSeen) return false;
+  return (Date.now() - lastSeen.getTime()) < ONLINE_THRESHOLD_MS;
+}
+
+export function getFrameLastSeen(pixieId: number): Date | null {
+  return frameLastSeen.get(pixieId) ?? null;
+}
+
 // Configuración MQTT
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com';
 const MQTT_TOPIC = 'pixie/photos';
@@ -76,6 +94,7 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
     return;
   }
 
+  updateFrameLastSeen(pixieId);
   console.log(`📨 [MQTT] Request recibido: ${requestType} para pixie ${pixieId}`);
 
   try {

@@ -28,7 +28,7 @@ export async function getPhotoComments(
   res: Response
 ) {
   const userId = req.user?.id;
-  const { photoId } = req.params;
+  const photoId = req.params.photoId as string;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
   const skip = (page - 1) * limit;
@@ -95,7 +95,7 @@ export async function getPhotoComments(
 
 export async function addComment(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const { photoId } = req.params;
+  const photoId = req.params.photoId as string;
   const { content } = req.body;
 
   if (!userId) {
@@ -165,7 +165,8 @@ export async function addComment(req: AuthenticatedRequest, res: Response) {
 
 export async function deleteComment(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const { photoId, commentId } = req.params;
+  const photoId = req.params.photoId as string;
+  const commentId = req.params.commentId as string;
 
   if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });

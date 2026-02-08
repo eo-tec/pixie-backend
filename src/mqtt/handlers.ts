@@ -216,6 +216,17 @@ export async function handleCoverRequest(pixieId: number, songId: string): Promi
     }
 
     publishBinary(responseTopic, binaryBuffer);
+
+    const songName = item?.name || 'Unknown';
+    await prisma.pixie.update({
+      where: { id: pixieId },
+      data: {
+        current_song_id: item?.id || songId,
+        current_song_name: songName,
+        current_photo_id: null,
+      },
+    });
+
     console.log(`[MQTT:cover] Cover enviado a pixie ${pixieId} (${binaryBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:cover] Error para pixie ${pixieId}:`, err);
@@ -334,6 +345,16 @@ export async function handlePhotoRequest(
     const finalBuffer = Buffer.concat([jsonBuffer, rgbBuffer]);
 
     publishBinary(responseTopic, finalBuffer);
+
+    await prisma.pixie.update({
+      where: { id: pixieId },
+      data: {
+        current_photo_id: photo.id,
+        current_song_id: null,
+        current_song_name: null,
+      },
+    });
+
     console.log(`[MQTT:photo] Foto enviada a pixie ${pixieId}: "${title}" (${finalBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:photo] Error para pixie ${pixieId}:`, err);
