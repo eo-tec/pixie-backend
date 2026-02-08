@@ -114,6 +114,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
+      clock_enabled: updatedPixie.clock_enabled,
       timezone_offset: user?.timezone_offset ?? 0
     }));
 
@@ -199,6 +200,7 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
+      clock_enabled: updatedPixie.clock_enabled,
       timezone_offset: user?.timezone_offset ?? 0
     }));
 
@@ -293,6 +295,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
+      clock_enabled: updatedPixie.clock_enabled,
       timezone_offset: user?.timezone_offset ?? 0
     }));
 

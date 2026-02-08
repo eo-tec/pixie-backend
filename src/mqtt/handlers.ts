@@ -401,6 +401,7 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       schedule_on_minute: pixie.schedule_on_minute ?? 0,
       schedule_off_hour: pixie.schedule_off_hour ?? 22,
       schedule_off_minute: pixie.schedule_off_minute ?? 0,
+      clock_enabled: pixie.clock_enabled ?? false,
       timezone_offset: pixie.users?.timezone_offset ?? 0
     });
 

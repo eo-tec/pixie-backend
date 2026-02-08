@@ -90,6 +90,7 @@ model pixie {
   schedule_on_minute  Int?               @default(0)
   schedule_off_hour   Int?               @default(22)
   schedule_off_minute Int?               @default(0)
+  clock_enabled       Boolean            @default(false)
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
