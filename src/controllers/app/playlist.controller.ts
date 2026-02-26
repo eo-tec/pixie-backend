@@ -3,6 +3,33 @@ import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT } from '../../mqtt/client';
 
+// Helper: send config update to frame via MQTT after playlist changes
+async function notifyFramePlaylistChanged(pixieId: number) {
+  const pixie = await prisma.pixie.findUnique({
+    where: { id: pixieId },
+    include: { users: true, playlist_items: true },
+  });
+  if (!pixie) return;
+
+  const playlistLength = pixie.playlist_items?.length || pixie.pictures_on_queue || 1;
+
+  publishToMQTT(`pixie/${pixieId}`, JSON.stringify({
+    action: "update_info",
+    brightness: pixie.brightness ?? 50,
+    pictures_on_queue: playlistLength,
+    spotify_enabled: pixie.spotify_enabled ?? false,
+    secs_between_photos: pixie.secs_between_photos ?? 30,
+    code: pixie.code ?? '',
+    schedule_enabled: pixie.schedule_enabled ?? false,
+    schedule_on_hour: pixie.schedule_on_hour ?? 8,
+    schedule_on_minute: pixie.schedule_on_minute ?? 0,
+    schedule_off_hour: pixie.schedule_off_hour ?? 22,
+    schedule_off_minute: pixie.schedule_off_minute ?? 0,
+    clock_enabled: pixie.clock_enabled ?? false,
+    timezone_offset: pixie.users?.timezone_offset ?? 0,
+  }));
+}
+
 // Helper: ensure default playlist exists for a pixie
 async function ensureDefaultPlaylist(pixieId: number) {
   const existing = await prisma.playlist_items.findMany({
@@ -216,6 +243,9 @@ export const addPlaylistItem = async (req: AuthenticatedRequest, res: Response) 
       data: { pictures_on_queue: totalItems },
     });
 
+    // Notify frame about updated playlist
+    await notifyFramePlaylistChanged(pixieId);
+
     res.status(201).json({ item });
   } catch (error) {
     console.error("Error al agregar item a playlist:", error);
@@ -283,6 +313,9 @@ export const deletePlaylistItem = async (req: AuthenticatedRequest, res: Respons
       where: { id: pixieId },
       data: { pictures_on_queue: remaining.length },
     });
+
+    // Notify frame about updated playlist
+    await notifyFramePlaylistChanged(pixieId);
 
     res.status(200).json({ message: "Item eliminado" });
   } catch (error) {
