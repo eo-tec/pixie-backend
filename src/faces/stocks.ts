@@ -90,42 +90,89 @@ export async function generateStocksImage(ticker: string, timeframe: string): Pr
   const dataPoints = closes.length;
   const openY = chartBottom - Math.round(((openPrice - minPrice) / priceRange) * chartHeight);
 
+  // Build chart grid: 0=black, 1=dim, 2=bright line
+  const gridH = chartBottom - chartTop + 1;
+  const grid: number[][] = Array.from({ length: gridH }, () => new Array(chartWidth).fill(0));
+  // Track whether each cell is green or red
+  const gridAbove: boolean[][] = Array.from({ length: gridH }, () => new Array(chartWidth).fill(true));
+
   let prevDotY: number | null = null;
 
   for (let px = 0; px < chartWidth; px++) {
-    // Map pixel x to data index
     const dataIdx = Math.min(
       Math.floor((px / chartWidth) * dataPoints),
       dataPoints - 1
     );
     const price = closes[dataIdx];
     const dotY = chartBottom - Math.round(((price - minPrice) / priceRange) * chartHeight);
-    const x = chartLeft + px;
+    const aboveOpen = price >= openPrice;
 
-    // Area fill between open line and dot
-    const color = price >= openPrice ? green : red;
-    const dimColor = { r: Math.floor(color.r * 0.15), g: Math.floor(color.g * 0.15), b: Math.floor(color.b * 0.15) };
-
+    // Dim fill between dotY and openY
     if (dotY <= openY) {
-      renderer.fillColumn(x, dotY + 1, openY, dimColor.r, dimColor.g, dimColor.b);
+      for (let y = dotY + 1; y <= openY; y++) {
+        const gy = y - chartTop;
+        if (gy >= 0 && gy < gridH) { grid[gy][px] = 1; gridAbove[gy][px] = true; }
+      }
     } else {
-      renderer.fillColumn(x, openY, dotY - 1, dimColor.r, dimColor.g, dimColor.b);
+      for (let y = openY + 1; y <= dotY - 1; y++) {
+        const gy = y - chartTop;
+        if (gy >= 0 && gy < gridH) { grid[gy][px] = 1; gridAbove[gy][px] = false; }
+      }
     }
 
-    // Draw line connecting previous dot to current dot
+    // Bright line: connect prevDotY to dotY
     if (prevDotY !== null && prevDotY !== dotY) {
       const minLY = Math.min(prevDotY, dotY);
       const maxLY = Math.max(prevDotY, dotY);
-      for (let ly = minLY; ly <= maxLY; ly++) {
-        // Each pixel colored by its position relative to open
-        const pixelColor = ly <= openY ? green : red;
-        renderer.drawDot(x, ly, pixelColor.r, pixelColor.g, pixelColor.b);
+      for (let y = minLY; y <= maxLY; y++) {
+        const gy = y - chartTop;
+        if (gy >= 0 && gy < gridH) { grid[gy][px] = 2; gridAbove[gy][px] = y <= openY; }
       }
     } else {
-      renderer.drawDot(x, dotY, color.r, color.g, color.b);
+      const gy = dotY - chartTop;
+      if (gy >= 0 && gy < gridH) { grid[gy][px] = 2; gridAbove[gy][px] = aboveOpen; }
     }
 
     prevDotY = dotY;
+  }
+
+  // Post-process: bright pixels that don't touch black or a color boundary become dim
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < chartWidth; gx++) {
+      if (grid[gy][gx] !== 2) continue;
+      const above = gridAbove[gy][gx];
+      const touchesBlack =
+        (gy > 0 && grid[gy - 1][gx] === 0) ||
+        (gy < gridH - 1 && grid[gy + 1][gx] === 0) ||
+        (gx > 0 && grid[gy][gx - 1] === 0) ||
+        (gx < chartWidth - 1 && grid[gy][gx + 1] === 0) ||
+        gy === 0 || gy === gridH - 1 || gx === 0 || gx === chartWidth - 1;
+      // Also keep bright if neighbor has a different color (green/red boundary)
+      const touchesColorBoundary =
+        (gy > 0 && grid[gy - 1][gx] !== 0 && gridAbove[gy - 1][gx] !== above) ||
+        (gy < gridH - 1 && grid[gy + 1][gx] !== 0 && gridAbove[gy + 1][gx] !== above) ||
+        (gx > 0 && grid[gy][gx - 1] !== 0 && gridAbove[gy][gx - 1] !== above) ||
+        (gx < chartWidth - 1 && grid[gy][gx + 1] !== 0 && gridAbove[gy][gx + 1] !== above);
+      if (!touchesBlack && !touchesColorBoundary) {
+        grid[gy][gx] = 1; // downgrade to dim
+      }
+    }
+  }
+
+  // Render grid to pixel buffer
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < chartWidth; gx++) {
+      if (grid[gy][gx] === 0) continue;
+      const x = chartLeft + gx;
+      const y = chartTop + gy;
+      const above = gridAbove[gy][gx];
+      const baseColor = above ? green : red;
+      if (grid[gy][gx] === 2) {
+        renderer.drawDot(x, y, baseColor.r, baseColor.g, baseColor.b);
+      } else {
+        renderer.drawDot(x, y, Math.floor(baseColor.r * 0.15), Math.floor(baseColor.g * 0.15), Math.floor(baseColor.b * 0.15));
+      }
+    }
   }
 
   return renderer.getBuffer();
