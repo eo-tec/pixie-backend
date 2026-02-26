@@ -61,16 +61,16 @@ export async function generateStocksImage(ticker: string, timeframe: string): Pr
 
   const changeStr = `${isPositive ? '+' : ''}${change.toFixed(2)}%`;
 
-  // Row ~6: Ticker (amber) left + timeframe (white) right
-  renderer.drawText(ticker.toUpperCase(), 1, 6, amber.r, amber.g, amber.b);
+  // Row 5: Ticker (amber) left + timeframe (white) right
+  renderer.drawText(ticker.toUpperCase(), 1, 5, amber.r, amber.g, amber.b);
   const tfWidth = renderer.getTextWidth(timeframe);
-  renderer.drawText(timeframe, 63 - tfWidth, 6, white.r, white.g, white.b);
+  renderer.drawText(timeframe, 63 - tfWidth, 5, white.r, white.g, white.b);
 
-  // Row ~14: Price (white)
-  renderer.drawText(priceStr, 1, 14, white.r, white.g, white.b);
+  // Row 13: Price (white)
+  renderer.drawText(priceStr, 1, 13, white.r, white.g, white.b);
 
-  // Row ~22: % change (green/red)
-  renderer.drawText(changeStr, 1, 22, changeColor.r, changeColor.g, changeColor.b);
+  // Row 21: % change (green/red)
+  renderer.drawText(changeStr, 1, 21, changeColor.r, changeColor.g, changeColor.b);
 
   // Chart area: rows 26-63, full width
   const chartTop = 28;
