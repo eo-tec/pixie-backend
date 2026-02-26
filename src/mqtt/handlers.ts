@@ -8,6 +8,7 @@ import { downloadFile, getPresignedUrlBin } from '../minio/minio';
 import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '../config';
 import { publishBinary, publishToMQTT } from './client';
 import { generateStocksImage } from '../faces/stocks';
+import { generateDayNightImage } from '../faces/daynight';
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
@@ -300,6 +301,9 @@ export async function handlePhotoRequest(
       case 'stocks':
         await serveStocksFace(pixieId, playlistItem, responseTopic, reqId);
         break;
+      case 'daynight':
+        await serveDayNightFace(pixieId, responseTopic, reqId);
+        break;
       default:
         console.log(`[MQTT:photo] Unknown face_type: ${playlistItem.face_type}`);
         await servePhotoFace(pixieId, pixie, responseTopic, reqId);
@@ -448,6 +452,34 @@ async function serveStocksFace(pixieId: number, playlistItem: any, responseTopic
     console.log(`[MQTT:photo] Stocks face enviado a pixie ${pixieId}: ${ticker} ${timeframe} reqId=${reqId} (${finalBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:photo] Error generando stocks face para ${ticker}:`, err);
+  }
+}
+
+// Helper: serve day/night world map face
+async function serveDayNightFace(pixieId: number, responseTopic: string, reqId?: number): Promise<void> {
+  try {
+    const rgbBuffer = await generateDayNightImage();
+
+    const metaObj: any = {};
+    if (reqId !== undefined) metaObj.reqId = reqId;
+    const jsonMeta = JSON.stringify(metaObj);
+    const jsonBuffer = Buffer.from(jsonMeta + '\n', 'utf-8');
+    const finalBuffer = Buffer.concat([jsonBuffer, rgbBuffer]);
+
+    publishBinary(responseTopic, finalBuffer);
+
+    await prisma.pixie.update({
+      where: { id: pixieId },
+      data: {
+        current_photo_id: null,
+        current_song_id: null,
+        current_song_name: null,
+      },
+    });
+
+    console.log(`[MQTT:photo] DayNight face enviado a pixie ${pixieId} reqId=${reqId} (${finalBuffer.length} bytes)`);
+  } catch (err) {
+    console.error(`[MQTT:photo] Error generando daynight face:`, err);
   }
 }
 

@@ -25,7 +25,7 @@ async function ensureDefaultPlaylist(pixieId: number) {
 }
 
 export const getPlaylist = async (req: AuthenticatedRequest, res: Response) => {
-  const pixieId = parseInt(req.params.pixieId, 10);
+  const pixieId = parseInt(req.params.pixieId as string, 10);
   const userId = req.user?.id;
 
   if (!userId) {
@@ -63,7 +63,7 @@ export const getPlaylist = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) => {
-  const pixieId = parseInt(req.params.pixieId, 10);
+  const pixieId = parseInt(req.params.pixieId as string, 10);
   const userId = req.user?.id;
   const { items } = req.body;
 
@@ -158,7 +158,7 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
 };
 
 export const addPlaylistItem = async (req: AuthenticatedRequest, res: Response) => {
-  const pixieId = parseInt(req.params.pixieId, 10);
+  const pixieId = parseInt(req.params.pixieId as string, 10);
   const userId = req.user?.id;
   const { face_type, config } = req.body;
 
@@ -224,8 +224,8 @@ export const addPlaylistItem = async (req: AuthenticatedRequest, res: Response) 
 };
 
 export const deletePlaylistItem = async (req: AuthenticatedRequest, res: Response) => {
-  const pixieId = parseInt(req.params.pixieId, 10);
-  const itemId = parseInt(req.params.itemId, 10);
+  const pixieId = parseInt(req.params.pixieId as string, 10);
+  const itemId = parseInt(req.params.itemId as string, 10);
   const userId = req.user?.id;
 
   if (!userId) {
