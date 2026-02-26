@@ -42,7 +42,8 @@ export async function generateStocksImage(ticker: string, timeframe: string): Pr
 
   // Current price and change
   const currentPrice = quotes[quotes.length - 1].close!;
-  const openPrice = quotes[0].open ?? quotes[0].close ?? currentPrice;
+  const previousClose = (result.meta as any).previousClose ?? (result.meta as any).chartPreviousClose;
+  const openPrice = previousClose ?? quotes[0].open ?? quotes[0].close ?? currentPrice;
   const change = ((currentPrice - openPrice) / openPrice) * 100;
   const isPositive = change >= 0;
   const changeColor = isPositive ? green : red;
@@ -80,11 +81,14 @@ export async function generateStocksImage(ticker: string, timeframe: string): Pr
   const chartWidth = chartRight - chartLeft + 1;
   const chartHeight = chartBottom - chartTop;
 
-  // Get min/max for scaling
+  // Get min/max for scaling (include openPrice so reference line is always visible)
   const closes = quotes.map(q => q.close!);
-  const minPrice = Math.min(...closes);
-  const maxPrice = Math.max(...closes);
+  const minPrice = Math.min(...closes, openPrice);
+  const maxPrice = Math.max(...closes, openPrice);
   const priceRange = maxPrice - minPrice || 1;
+
+  // Reverse so newest data is on the right
+  closes.reverse();
 
   // Map data points to chart pixels
   const dataPoints = closes.length;
