@@ -7,6 +7,7 @@ import prisma from '../services/prisma';
 import { downloadFile, getPresignedUrlBin } from '../minio/minio';
 import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '../config';
 import { publishBinary, publishToMQTT } from './client';
+import { generateStocksImage } from '../faces/stocks';
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
@@ -33,7 +34,16 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
           mac: mac,
           name: "Pixie",
           code: "0000",
-          pictures_on_queue: 5
+          pictures_on_queue: 1
+        }
+      });
+      // Create default playlist item
+      await prisma.playlist_items.create({
+        data: {
+          pixie_id: pixie.id,
+          position: 0,
+          face_type: 'photos',
+          locked: true,
         }
       });
       console.log(`[MQTT:register] Nuevo pixie creado: ${pixie.id}`);
@@ -240,108 +250,188 @@ export async function handleCoverRequest(pixieId: number, songId: string): Promi
 // ============================================================================
 export async function handlePhotoRequest(
   pixieId: number,
-  payload: { index?: number; id?: number }
+  payload: { index?: number; id?: number; reqId?: number }
 ): Promise<void> {
   const responseTopic = `pixie/${pixieId}/response/photo`;
 
   try {
-    let photo;
+    const reqId = payload.reqId;
 
+    // Server-push photo by ID - keep untouched
     if (payload.id !== undefined) {
-      // Buscar por ID específico
-      photo = await prisma.photos.findFirst({
-        where: {
-          id: payload.id,
-          deleted_at: null
-        }
+      const photo = await prisma.photos.findFirst({
+        where: { id: payload.id, deleted_at: null }
       });
-    } else {
-      // Buscar por índice en las fotos del pixie
-      const pixie = await prisma.pixie.findUnique({
-        where: { id: pixieId }
-      });
-
-      if (!pixie || !pixie.created_by) {
-        console.log(`[MQTT:photo] Pixie ${pixieId} no encontrado o sin propietario`);
-        return;
+      if (photo) {
+        await serveDirectPhoto(pixieId, photo, responseTopic, reqId);
+      } else {
+        console.log(`[MQTT:photo] Foto no encontrada`);
       }
-
-      // Obtener IDs de amigos aceptados del propietario del pixie
-      const friends = await prisma.friends.findMany({
-        where: {
-          status: 'accepted',
-          OR: [
-            { user_id_1: pixie.created_by },
-            { user_id_2: pixie.created_by }
-          ]
-        }
-      });
-      const friendIds = friends.map(f =>
-        f.user_id_1 === pixie.created_by ? f.user_id_2 : f.user_id_1
-      );
-
-      const photos = await prisma.photos.findMany({
-        where: {
-          AND: [
-            {
-              OR: [
-                { user_id: pixie.created_by },                        // Fotos propias
-                { visible_by: { some: { user_id: pixie.created_by } } }, // Compartidas conmigo
-                ...(friendIds.length > 0 ? [{                         // Públicas de amigos
-                  is_public: true,
-                  user_id: { in: friendIds }
-                }] : [])
-              ]
-            },
-            { deleted_at: null }
-          ]
-        },
-        orderBy: { created_at: 'desc' }
-      });
-
-      if (photos.length === 0) {
-        console.log(`[MQTT:photo] No hay fotos para pixie ${pixieId}`);
-        return;
-      }
-
-      const index = payload.index ?? 0;
-      photo = photos[index % photos.length];
-    }
-
-    if (!photo?.photo_url) {
-      console.log(`[MQTT:photo] Foto no encontrada`);
       return;
     }
 
-    // Descargar imagen de MinIO
-    const fileStream = await downloadFile(photo.photo_url);
-    const chunks: Buffer[] = [];
-    for await (const chunk of fileStream) {
-      chunks.push(chunk);
+    // Playlist-aware dispatch
+    const pixie = await prisma.pixie.findUnique({
+      where: { id: pixieId },
+      include: {
+        playlist_items: { orderBy: { position: 'asc' } }
+      }
+    });
+
+    if (!pixie || !pixie.created_by) {
+      console.log(`[MQTT:photo] Pixie ${pixieId} no encontrado o sin propietario`);
+      return;
     }
-    const buffer = Buffer.concat(chunks);
 
-    // Procesar imagen a 64x64 RGB888
-    const rgbBuffer = await sharp(buffer)
-      .resize(64, 64)
-      .removeAlpha()
-      .raw()
-      .toBuffer();
+    const index = payload.index ?? 0;
 
-    // Preparar metadata JSON
-    const title = (photo.title || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\n/g, '');
+    // If no playlist items, fallback to legacy photo behavior
+    if (!pixie.playlist_items || pixie.playlist_items.length === 0) {
+      await servePhotoFace(pixieId, pixie, responseTopic, reqId);
+      return;
+    }
 
-    const author = (photo.username || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+    const playlistItem = pixie.playlist_items[index % pixie.playlist_items.length];
 
-    const jsonMeta = JSON.stringify({ title, author });
+    switch (playlistItem.face_type) {
+      case 'photos':
+        await servePhotoFace(pixieId, pixie, responseTopic, reqId);
+        break;
+      case 'stocks':
+        await serveStocksFace(pixieId, playlistItem, responseTopic, reqId);
+        break;
+      default:
+        console.log(`[MQTT:photo] Unknown face_type: ${playlistItem.face_type}`);
+        await servePhotoFace(pixieId, pixie, responseTopic, reqId);
+    }
+  } catch (err) {
+    console.error(`[MQTT:photo] Error para pixie ${pixieId}:`, err);
+  }
+}
+
+// Helper: serve a specific photo directly (by ID push)
+async function serveDirectPhoto(pixieId: number, photo: any, responseTopic: string, reqId?: number): Promise<void> {
+  if (!photo?.photo_url) {
+    console.log(`[MQTT:photo] Foto sin URL`);
+    return;
+  }
+
+  const fileStream = await downloadFile(photo.photo_url);
+  const chunks: Buffer[] = [];
+  for await (const chunk of fileStream) {
+    chunks.push(chunk);
+  }
+  const buffer = Buffer.concat(chunks);
+
+  const rgbBuffer = await sharp(buffer)
+    .resize(64, 64)
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+
+  const title = (photo.title || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\n/g, '');
+
+  const author = (photo.username || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const metaObj: any = { title, author };
+  if (reqId !== undefined) metaObj.reqId = reqId;
+  const jsonMeta = JSON.stringify(metaObj);
+  const jsonBuffer = Buffer.from(jsonMeta + '\n', 'utf-8');
+  const finalBuffer = Buffer.concat([jsonBuffer, rgbBuffer]);
+
+  publishBinary(responseTopic, finalBuffer);
+
+  await prisma.pixie.update({
+    where: { id: pixieId },
+    data: {
+      current_photo_id: photo.id,
+      current_song_id: null,
+      current_song_name: null,
+    },
+  });
+
+  console.log(`[MQTT:photo] Foto enviada a pixie ${pixieId}: "${title}" reqId=${reqId} (${finalBuffer.length} bytes)`);
+}
+
+// Helper: serve photo using photo_cursor (playlist-aware)
+async function servePhotoFace(pixieId: number, pixie: any, responseTopic: string, reqId?: number): Promise<void> {
+  if (!pixie.created_by) return;
+
+  // Get accessible photos (same friends/visibility logic)
+  const friends = await prisma.friends.findMany({
+    where: {
+      status: 'accepted',
+      OR: [
+        { user_id_1: pixie.created_by },
+        { user_id_2: pixie.created_by }
+      ]
+    }
+  });
+  const friendIds = friends.map((f: any) =>
+    f.user_id_1 === pixie.created_by ? f.user_id_2 : f.user_id_1
+  );
+
+  const photos = await prisma.photos.findMany({
+    where: {
+      AND: [
+        {
+          OR: [
+            { user_id: pixie.created_by },
+            { visible_by: { some: { user_id: pixie.created_by } } },
+            ...(friendIds.length > 0 ? [{
+              is_public: true,
+              user_id: { in: friendIds }
+            }] : [])
+          ]
+        },
+        { deleted_at: null }
+      ]
+    },
+    orderBy: { created_at: 'desc' }
+  });
+
+  if (photos.length === 0) {
+    console.log(`[MQTT:photo] No hay fotos para pixie ${pixieId}`);
+    return;
+  }
+
+  // Limit photo pool when max_photos is set (> 0)
+  const pool = pixie.max_photos > 0
+    ? photos.slice(0, pixie.max_photos)
+    : photos;
+
+  // Use photo_cursor instead of index
+  const cursor = pixie.photo_cursor ?? 0;
+  const photo = pool[cursor % pool.length];
+
+  // Advance cursor with wrap
+  const nextCursor = (cursor + 1) % pool.length;
+  await prisma.pixie.update({
+    where: { id: pixieId },
+    data: { photo_cursor: nextCursor },
+  });
+
+  await serveDirectPhoto(pixieId, photo, responseTopic, reqId);
+}
+
+// Helper: serve stocks face image
+async function serveStocksFace(pixieId: number, playlistItem: any, responseTopic: string, reqId?: number): Promise<void> {
+  const config = playlistItem.config as any;
+  const ticker = config?.ticker || 'SPY';
+  const timeframe = config?.timeframe || '1D';
+
+  try {
+    const rgbBuffer = await generateStocksImage(ticker, timeframe);
+
+    const metaObj: any = {};
+    if (reqId !== undefined) metaObj.reqId = reqId;
+    const jsonMeta = JSON.stringify(metaObj);
     const jsonBuffer = Buffer.from(jsonMeta + '\n', 'utf-8');
-
-    // Concatenar: JSON + newline + binario
     const finalBuffer = Buffer.concat([jsonBuffer, rgbBuffer]);
 
     publishBinary(responseTopic, finalBuffer);
@@ -349,15 +439,15 @@ export async function handlePhotoRequest(
     await prisma.pixie.update({
       where: { id: pixieId },
       data: {
-        current_photo_id: photo.id,
+        current_photo_id: null,
         current_song_id: null,
         current_song_name: null,
       },
     });
 
-    console.log(`[MQTT:photo] Foto enviada a pixie ${pixieId}: "${title}" (${finalBuffer.length} bytes)`);
+    console.log(`[MQTT:photo] Stocks face enviado a pixie ${pixieId}: ${ticker} ${timeframe} reqId=${reqId} (${finalBuffer.length} bytes)`);
   } catch (err) {
-    console.error(`[MQTT:photo] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:photo] Error generando stocks face para ${ticker}:`, err);
   }
 }
 
@@ -403,7 +493,10 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
   try {
     const pixie = await prisma.pixie.findUnique({
       where: { id: pixieId },
-      include: { users: true }
+      include: {
+        users: true,
+        playlist_items: true,
+      }
     });
 
     if (!pixie) {
@@ -411,9 +504,11 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       return;
     }
 
+    const playlistLength = pixie.playlist_items?.length || pixie.pictures_on_queue || 5;
+
     publishToMQTT(responseTopic, {
       brightness: pixie.brightness ?? 50,
-      pictures_on_queue: pixie.pictures_on_queue ?? 5,
+      pictures_on_queue: playlistLength,
       spotify_enabled: pixie.spotify_enabled ?? false,
       secs_between_photos: pixie.secs_between_photos ?? 30,
       code: pixie.code ?? '',

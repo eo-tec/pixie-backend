@@ -11,7 +11,7 @@ import { drawingRouter } from './drawing.routes';
 import { pixiesRouter } from './pixies.routes';
 import { reactionsRouter } from './reactions.routes';
 import { commentsRouter } from './comments.routes';
-// Otras rutas que tengas
+import { playlistRouter } from './playlist.routes';
 
 export const privateRouter = Router();
 
@@ -45,6 +45,7 @@ privateRouter.use('/users', usersRouter);
 
 // Pixies routes
 privateRouter.use('/pixies', pixiesRouter);
+privateRouter.use('/pixies', playlistRouter);
 
 // Drawing routes
 privateRouter.use('/', drawingRouter);

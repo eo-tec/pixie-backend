@@ -217,6 +217,25 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
+    // Create default playlist if none exists
+    const existingPlaylist = await prisma.playlist_items.findMany({
+      where: { pixie_id: pixie.id },
+    });
+    if (existingPlaylist.length === 0) {
+      await prisma.playlist_items.create({
+        data: {
+          pixie_id: pixie.id,
+          position: 0,
+          face_type: 'photos',
+          locked: true,
+        },
+      });
+      await prisma.pixie.update({
+        where: { id: pixie.id },
+        data: { pictures_on_queue: 1 },
+      });
+    }
+
     // Obtener timezone del usuario dueño del frame
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
 
@@ -309,6 +328,25 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
         name: name || pixie.name || "Pixie"
       }
     });
+
+    // Create default playlist if none exists
+    const existingPlaylist = await prisma.playlist_items.findMany({
+      where: { pixie_id: pixie.id },
+    });
+    if (existingPlaylist.length === 0) {
+      await prisma.playlist_items.create({
+        data: {
+          pixie_id: pixie.id,
+          position: 0,
+          face_type: 'photos',
+          locked: true,
+        },
+      });
+      await prisma.pixie.update({
+        where: { id: pixie.id },
+        data: { pictures_on_queue: 1 },
+      });
+    }
 
     console.log(`[Pixie] Frame ${pixie.id} (MAC: ${frameToken}) registrado con usuario ${userId}`);
 

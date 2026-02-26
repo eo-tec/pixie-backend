@@ -96,10 +96,27 @@ model pixie {
   current_song_id     String?
   current_song_name   String?
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  photo_cursor        Int                @default(0)
+  max_photos          Int                @default(0)
   current_photo       photos?            @relation("CurrentPhoto", fields: [current_photo_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
+  playlist_items      playlist_items[]
 
+  @@schema("public")
+}
+
+model playlist_items {
+  id         Int      @id @default(autoincrement())
+  pixie_id   Int
+  position   Int
+  face_type  String
+  config     Json     @default("{}")
+  locked     Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  pixie      pixie    @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
+
+  @@unique([pixie_id, position])
   @@schema("public")
 }
 
