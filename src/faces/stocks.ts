@@ -87,96 +87,51 @@ export async function generateStocksImage(ticker: string, timeframe: string): Pr
   const maxPrice = Math.max(...closes, openPrice);
   const priceRange = maxPrice - minPrice || 1;
 
-  // Reverse so newest data is on the right
-  closes.reverse();
-
-  // Map data points to chart pixels
+  // Aggregate data points per pixel column (average all points that map to each column)
   const dataPoints = closes.length;
-  const openY = chartBottom - Math.round(((openPrice - minPrice) / priceRange) * chartHeight);
+  const rawColumnPrices: number[] = [];
+  for (let px = 0; px < chartWidth; px++) {
+    const startIdx = Math.floor((px / chartWidth) * dataPoints);
+    const endIdx = Math.floor(((px + 1) / chartWidth) * dataPoints);
+    const slice = closes.slice(startIdx, Math.max(endIdx, startIdx + 1));
+    rawColumnPrices.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+  }
 
-  // Build chart grid: 0=black, 1=dim, 2=bright line
-  const gridH = chartBottom - chartTop + 1;
-  const grid: number[][] = Array.from({ length: gridH }, () => new Array(chartWidth).fill(0));
-  // Track whether each cell is green or red
-  const gridAbove: boolean[][] = Array.from({ length: gridH }, () => new Array(chartWidth).fill(true));
+  // Smooth with a weighted moving average (radius=2) to reduce jaggedness
+  const columnPrices: number[] = [];
+  for (let i = 0; i < chartWidth; i++) {
+    let sum = 0, weight = 0;
+    for (let d = -2; d <= 2; d++) {
+      const j = Math.max(0, Math.min(chartWidth - 1, i + d));
+      const w = 3 - Math.abs(d); // weights: 1, 2, 3, 2, 1
+      sum += rawColumnPrices[j] * w;
+      weight += w;
+    }
+    columnPrices.push(sum / weight);
+  }
+
+  const openY = chartBottom - Math.round(((openPrice - minPrice) / priceRange) * chartHeight);
 
   let prevDotY: number | null = null;
 
   for (let px = 0; px < chartWidth; px++) {
-    const dataIdx = Math.min(
-      Math.floor((px / chartWidth) * dataPoints),
-      dataPoints - 1
-    );
-    const price = closes[dataIdx];
+    const price = columnPrices[px];
     const dotY = chartBottom - Math.round(((price - minPrice) / priceRange) * chartHeight);
     const aboveOpen = price >= openPrice;
 
-    // Dim fill between dotY and openY
-    if (dotY <= openY) {
-      for (let y = dotY + 1; y <= openY; y++) {
-        const gy = y - chartTop;
-        if (gy >= 0 && gy < gridH) { grid[gy][px] = 1; gridAbove[gy][px] = true; }
-      }
-    } else {
-      for (let y = openY + 1; y <= dotY - 1; y++) {
-        const gy = y - chartTop;
-        if (gy >= 0 && gy < gridH) { grid[gy][px] = 1; gridAbove[gy][px] = false; }
-      }
-    }
-
-    // Bright line: connect prevDotY to dotY
+    // Draw bright line connecting prevDotY to dotY (single color per column)
+    const color = aboveOpen ? green : red;
     if (prevDotY !== null && prevDotY !== dotY) {
       const minLY = Math.min(prevDotY, dotY);
       const maxLY = Math.max(prevDotY, dotY);
       for (let y = minLY; y <= maxLY; y++) {
-        const gy = y - chartTop;
-        if (gy >= 0 && gy < gridH) { grid[gy][px] = 2; gridAbove[gy][px] = y <= openY; }
+        renderer.drawDot(chartLeft + px, y, color.r, color.g, color.b);
       }
     } else {
-      const gy = dotY - chartTop;
-      if (gy >= 0 && gy < gridH) { grid[gy][px] = 2; gridAbove[gy][px] = aboveOpen; }
+      renderer.drawDot(chartLeft + px, dotY, color.r, color.g, color.b);
     }
 
     prevDotY = dotY;
-  }
-
-  // Post-process: bright pixels that don't touch black or a color boundary become dim
-  for (let gy = 0; gy < gridH; gy++) {
-    for (let gx = 0; gx < chartWidth; gx++) {
-      if (grid[gy][gx] !== 2) continue;
-      const above = gridAbove[gy][gx];
-      const touchesBlack =
-        (gy > 0 && grid[gy - 1][gx] === 0) ||
-        (gy < gridH - 1 && grid[gy + 1][gx] === 0) ||
-        (gx > 0 && grid[gy][gx - 1] === 0) ||
-        (gx < chartWidth - 1 && grid[gy][gx + 1] === 0) ||
-        gy === 0 || gy === gridH - 1 || gx === 0 || gx === chartWidth - 1;
-      // Also keep bright if neighbor has a different color (green/red boundary)
-      const touchesColorBoundary =
-        (gy > 0 && grid[gy - 1][gx] !== 0 && gridAbove[gy - 1][gx] !== above) ||
-        (gy < gridH - 1 && grid[gy + 1][gx] !== 0 && gridAbove[gy + 1][gx] !== above) ||
-        (gx > 0 && grid[gy][gx - 1] !== 0 && gridAbove[gy][gx - 1] !== above) ||
-        (gx < chartWidth - 1 && grid[gy][gx + 1] !== 0 && gridAbove[gy][gx + 1] !== above);
-      if (!touchesBlack && !touchesColorBoundary) {
-        grid[gy][gx] = 1; // downgrade to dim
-      }
-    }
-  }
-
-  // Render grid to pixel buffer
-  for (let gy = 0; gy < gridH; gy++) {
-    for (let gx = 0; gx < chartWidth; gx++) {
-      if (grid[gy][gx] === 0) continue;
-      const x = chartLeft + gx;
-      const y = chartTop + gy;
-      const above = gridAbove[gy][gx];
-      const baseColor = above ? green : red;
-      if (grid[gy][gx] === 2) {
-        renderer.drawDot(x, y, baseColor.r, baseColor.g, baseColor.b);
-      } else {
-        renderer.drawDot(x, y, Math.floor(baseColor.r * 0.15), Math.floor(baseColor.g * 0.15), Math.floor(baseColor.b * 0.15));
-      }
-    }
   }
 
   return renderer.getBuffer();
