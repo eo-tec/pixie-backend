@@ -4,6 +4,7 @@ import { spotifyRouter } from './spotify.routes';
 import { photosRouter } from './photos.routes';
 import { versionRouter } from './version.routes';
 import { pixieRouter } from './pixie.routes';
+import { waitlistRouter } from './waitlist.routes';
 import { newUser } from '../../controllers/pixie/newUser.controller';
 
 export const publicRouter = Router();
@@ -12,6 +13,7 @@ publicRouter.use('/spotify', spotifyRouter);
 publicRouter.use('/photo', photosRouter);
 publicRouter.use('/version', versionRouter);
 publicRouter.use('/pixie', pixieRouter);
+publicRouter.use('/waitlist', waitlistRouter);
 publicRouter.put('/new-user', newUser);
 publicRouter.get('/', (req, res) => {
   res.send('Hello, world!');
