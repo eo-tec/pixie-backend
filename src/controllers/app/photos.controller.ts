@@ -239,7 +239,7 @@ export async function postPhoto(req: Request, res: Response) {
 
     for (const pixie of pixies) {
       await publishToMQTT(
-        `pixie/${pixie.id}`,
+        `frame/${pixie.id}`,
         JSON.stringify({
           action: "update_photo",
           id: newPhoto.id,

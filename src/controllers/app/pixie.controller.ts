@@ -135,7 +135,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       : null;
 
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
-    publishToMQTT(`pixie/${existingPixie.id}`, JSON.stringify({
+    publishToMQTT(`frame/${existingPixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
       pictures_on_queue: updatedPixie.pictures_on_queue,
@@ -168,7 +168,7 @@ export const showPhoto = async (req: AuthenticatedRequest, res: Response) => {
   });
 
   pixies.map((pixie) => { 
-    publishToMQTT(`pixie/${pixie.id}`, JSON.stringify({action: "update_photo", id}));
+    publishToMQTT(`frame/${pixie.id}`, JSON.stringify({action: "update_photo", id}));
   });
   
 
@@ -240,7 +240,7 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
 
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
-    publishToMQTT(`pixie/${updatedPixie.id}`, JSON.stringify({
+    publishToMQTT(`frame/${updatedPixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
       pictures_on_queue: updatedPixie.pictures_on_queue,
@@ -274,7 +274,7 @@ export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
 
   try {
     // Enviar mensaje MQTT para reset de fábrica
-    publishToMQTT(`pixie/${pixieId}`, JSON.stringify({action: "factory_reset"}));
+    publishToMQTT(`frame/${pixieId}`, JSON.stringify({action: "factory_reset"}));
     
     res.status(200).json({ 
       message: "Comando de reset enviado", 
@@ -354,7 +354,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
 
     // Enviar config al frame via MQTT
-    publishToMQTT(`pixie/${pixie.id}`, JSON.stringify({
+    publishToMQTT(`frame/${pixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
       pictures_on_queue: updatedPixie.pictures_on_queue,

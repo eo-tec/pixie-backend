@@ -3,7 +3,7 @@ import { DrawingCommand } from '../types/drawing.types';
 
 export const publishDrawingCommand = async (deviceId: number, command: DrawingCommand): Promise<void> => {
   try {
-    const topic = `pixie/${deviceId}`;
+    const topic = `frame/${deviceId}`;
     
     // Convert RGB hex to RGB565 for ESP32
     let rgb565Color: number | undefined;
@@ -86,7 +86,7 @@ export function rgb565ToHex(rgb565: number): string {
 // Enter drawing mode command
 export const enterDrawingMode = async (deviceId: number): Promise<void> => {
   try {
-    const topic = `pixie/${deviceId}`;
+    const topic = `frame/${deviceId}`;
     const message = {
       action: 'enter_draw_mode'
     };
@@ -102,7 +102,7 @@ export const enterDrawingMode = async (deviceId: number): Promise<void> => {
 // Exit drawing mode command
 export const exitDrawingMode = async (deviceId: number): Promise<void> => {
   try {
-    const topic = `pixie/${deviceId}`;
+    const topic = `frame/${deviceId}`;
     const message = {
       action: 'exit_draw_mode'
     };

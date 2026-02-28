@@ -13,7 +13,7 @@ async function notifyFramePlaylistChanged(pixieId: number) {
 
   const playlistLength = pixie.playlist_items?.length || pixie.pictures_on_queue || 1;
 
-  publishToMQTT(`pixie/${pixieId}`, JSON.stringify({
+  publishToMQTT(`frame/${pixieId}`, JSON.stringify({
     action: "update_info",
     brightness: pixie.brightness ?? 50,
     pictures_on_queue: playlistLength,
@@ -156,7 +156,7 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
 
     const updatedPixie = await prisma.pixie.findUnique({ where: { id: pixieId } });
 
-    publishToMQTT(`pixie/${pixieId}`, JSON.stringify({
+    publishToMQTT(`frame/${pixieId}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie?.brightness ?? 50,
       pictures_on_queue: items.length,

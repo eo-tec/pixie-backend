@@ -28,9 +28,14 @@ export function getFrameLastSeen(pixieId: number): Date | null {
 
 // Configuración MQTT
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com';
-const MQTT_TOPIC = 'pixie/photos';
-const MQTT_REQUEST_TOPIC = 'pixie/+/request/#';
-const MQTT_REGISTER_TOPIC = 'pixie/mac/+/request/register';
+const MQTT_REQUEST_TOPICS = [
+  'frame/+/request/#',
+  'pixie/+/request/#',           // backward compat firmwares viejos
+];
+const MQTT_REGISTER_TOPICS = [
+  'frame/mac/+/request/register',
+  'pixie/mac/+/request/register', // backward compat firmwares viejos
+];
 
 let client: mqtt.MqttClient;
 
@@ -43,23 +48,27 @@ export const connectMQTT = () => {
   client.on('connect', () => {
     console.log(`📡 Conectado a MQTT en ${MQTT_BROKER_URL}`);
 
-    // Suscribirse a requests de los ESP32
-    client.subscribe(MQTT_REQUEST_TOPIC, { qos: 1 }, (err) => {
-      if (err) {
-        console.error('❌ Error suscribiéndose a requests:', err);
-      } else {
-        console.log(`📥 Suscrito a ${MQTT_REQUEST_TOPIC}`);
-      }
-    });
+    // Suscribirse a requests de los ESP32 (frame/ + pixie/ backward compat)
+    for (const topic of MQTT_REQUEST_TOPICS) {
+      client.subscribe(topic, { qos: 1 }, (err) => {
+        if (err) {
+          console.error(`❌ Error suscribiéndose a ${topic}:`, err);
+        } else {
+          console.log(`📥 Suscrito a ${topic}`);
+        }
+      });
+    }
 
-    // Suscribirse a requests de registro (por MAC)
-    client.subscribe(MQTT_REGISTER_TOPIC, { qos: 1 }, (err) => {
-      if (err) {
-        console.error('❌ Error suscribiéndose a register:', err);
-      } else {
-        console.log(`📥 Suscrito a ${MQTT_REGISTER_TOPIC}`);
-      }
-    });
+    // Suscribirse a requests de registro por MAC (frame/ + pixie/ backward compat)
+    for (const topic of MQTT_REGISTER_TOPICS) {
+      client.subscribe(topic, { qos: 1 }, (err) => {
+        if (err) {
+          console.error(`❌ Error suscribiéndose a ${topic}:`, err);
+        } else {
+          console.log(`📥 Suscrito a ${topic}`);
+        }
+      });
+    }
   });
 
   client.on('error', (err) => {
@@ -73,16 +82,16 @@ export const connectMQTT = () => {
 async function handleMqttMessage(topic: string, payload: Buffer) {
   const parts = topic.split('/');
 
-  // Manejar registro por MAC: pixie/mac/{MAC}/request/register
-  if (parts.length >= 5 && parts[0] === 'pixie' && parts[1] === 'mac' && parts[3] === 'request' && parts[4] === 'register') {
+  // Manejar registro por MAC: frame/mac/{MAC}/request/register (o pixie/ backward compat)
+  if (parts.length >= 5 && (parts[0] === 'frame' || parts[0] === 'pixie') && parts[1] === 'mac' && parts[3] === 'request' && parts[4] === 'register') {
     const mac = parts[2];
     console.log(`📨 [MQTT] Register request para MAC: ${mac}`);
     await handleRegisterRequest(mac);
     return;
   }
 
-  // Parsear topic: pixie/{pixieId}/request/{type}
-  if (parts.length < 4 || parts[0] !== 'pixie' || parts[2] !== 'request') {
+  // Parsear topic: frame/{pixieId}/request/{type} (o pixie/ backward compat)
+  if (parts.length < 4 || (parts[0] !== 'frame' && parts[0] !== 'pixie') || parts[2] !== 'request') {
     return; // No es un request válido
   }
 
@@ -95,7 +104,7 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
   }
 
   updateFrameLastSeen(pixieId);
-  console.log(`📨 [MQTT] Request recibido: ${requestType} para pixie ${pixieId}`);
+  console.log(`📨 [MQTT] Request recibido: ${requestType} para frame ${pixieId}`);
 
   try {
     switch (requestType) {
@@ -134,7 +143,7 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
         console.log(`[MQTT] Tipo de request desconocido: ${requestType}`);
     }
   } catch (err) {
-    console.error(`[MQTT] Error procesando ${requestType} para pixie ${pixieId}:`, err);
+    console.error(`[MQTT] Error procesando ${requestType} para frame ${pixieId}:`, err);
   }
 }
 

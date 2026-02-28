@@ -354,7 +354,7 @@ export async function postPublicPhoto(req: Request, res: Response) {
     });
 
     await publishToMQTT(
-      `pixie/3`,
+      `frame/3`,
       JSON.stringify({
         action: "update_photo",
         id: newPhoto.id,

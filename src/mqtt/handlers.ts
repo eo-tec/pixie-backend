@@ -12,11 +12,11 @@ import { generateDayNightImage } from '../faces/daynight';
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
-// Topic: pixie/mac/{MAC}/request/register -> pixie/mac/{MAC}/response/register
-// Response: {"pixieId": N, "code": "0000"}
+// Topic: frame/mac/{MAC}/request/register -> frame/mac/{MAC}/response/register
+// Response: {"pixieId": N, "frameId": N, "code": "0000"}
 // ============================================================================
 export async function handleRegisterRequest(mac: string): Promise<void> {
-  const responseTopic = `pixie/mac/${mac}/response/register`;
+  const responseTopic = `frame/mac/${mac}/response/register`;
 
   try {
     console.log(`[MQTT:register] Solicitud de registro para MAC: ${mac}`);
@@ -33,7 +33,7 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
       pixie = await prisma.pixie.create({
         data: {
           mac: mac,
-          name: "Pixie",
+          name: "frame.",
           code: "0000",
           pictures_on_queue: 1
         }
@@ -52,7 +52,8 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
 
     // Enviar respuesta
     publishToMQTT(responseTopic, {
-      pixieId: pixie.id,
+      pixieId: pixie.id,  // backward compat firmware viejo
+      frameId: pixie.id,  // campo nuevo
       code: pixie.code || "0000"
     });
 
@@ -124,11 +125,11 @@ async function getSpotifyCredentialsForPixie(pixie_id: number) {
 
 // ============================================================================
 // HANDLER: Song Request
-// Topic: pixie/{id}/request/song -> pixie/{id}/response/song
+// Topic: frame/{id}/request/song -> frame/{id}/response/song
 // Response: {"id":"spotifyTrackId"} o {}
 // ============================================================================
 export async function handleSongRequest(pixieId: number): Promise<void> {
-  const responseTopic = `pixie/${pixieId}/response/song`;
+  const responseTopic = `frame/${pixieId}/response/song`;
 
   try {
     const credentials = await getSpotifyCredentialsForPixie(pixieId);
@@ -150,18 +151,18 @@ export async function handleSongRequest(pixieId: number): Promise<void> {
     const songId = playbackState.body.item?.id || '';
     publishToMQTT(responseTopic, { id: songId });
   } catch (err) {
-    console.error(`[MQTT:song] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:song] Error para frame ${pixieId}:`, err);
     // No enviar respuesta en caso de error - el ESP32 tiene timeout
   }
 }
 
 // ============================================================================
 // HANDLER: Cover Request
-// Topic: pixie/{id}/request/cover -> pixie/{id}/response/cover
+// Topic: frame/{id}/request/cover -> frame/{id}/response/cover
 // Response: 8192 bytes binarios RGB565 (64x64, Big Endian)
 // ============================================================================
 export async function handleCoverRequest(pixieId: number, songId: string): Promise<void> {
-  const responseTopic = `pixie/${pixieId}/response/cover`;
+  const responseTopic = `frame/${pixieId}/response/cover`;
 
   try {
     const credentials = await getSpotifyCredentialsForPixie(pixieId);
@@ -176,7 +177,7 @@ export async function handleCoverRequest(pixieId: number, songId: string): Promi
     const playbackState = await spotifyApi.getMyCurrentPlayingTrack();
 
     if (!playbackState.body || !playbackState.body.item) {
-      console.log(`[MQTT:cover] No hay canción reproduciéndose para pixie ${pixieId}`);
+      console.log(`[MQTT:cover] No hay canción reproduciéndose para frame ${pixieId}`);
       return;
     }
 
@@ -190,7 +191,7 @@ export async function handleCoverRequest(pixieId: number, songId: string): Promi
     }
 
     if (!coverUrl) {
-      console.log(`[MQTT:cover] No se encontró portada para pixie ${pixieId}`);
+      console.log(`[MQTT:cover] No se encontró portada para frame ${pixieId}`);
       return;
     }
 
@@ -238,22 +239,22 @@ export async function handleCoverRequest(pixieId: number, songId: string): Promi
       },
     });
 
-    console.log(`[MQTT:cover] Cover enviado a pixie ${pixieId} (${binaryBuffer.length} bytes)`);
+    console.log(`[MQTT:cover] Cover enviado a frame ${pixieId} (${binaryBuffer.length} bytes)`);
   } catch (err) {
-    console.error(`[MQTT:cover] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:cover] Error para frame ${pixieId}:`, err);
   }
 }
 
 // ============================================================================
 // HANDLER: Photo Request
-// Topic: pixie/{id}/request/photo -> pixie/{id}/response/photo
+// Topic: frame/{id}/request/photo -> frame/{id}/response/photo
 // Response: {"title":"x","author":"y"}\n + 12288 bytes RGB888
 // ============================================================================
 export async function handlePhotoRequest(
   pixieId: number,
   payload: { index?: number; id?: number; reqId?: number }
 ): Promise<void> {
-  const responseTopic = `pixie/${pixieId}/response/photo`;
+  const responseTopic = `frame/${pixieId}/response/photo`;
 
   try {
     const reqId = payload.reqId;
@@ -280,7 +281,7 @@ export async function handlePhotoRequest(
     });
 
     if (!pixie || !pixie.created_by) {
-      console.log(`[MQTT:photo] Pixie ${pixieId} no encontrado o sin propietario`);
+      console.log(`[MQTT:photo] Frame ${pixieId} no encontrado o sin propietario`);
       return;
     }
 
@@ -309,7 +310,7 @@ export async function handlePhotoRequest(
         await servePhotoFace(pixieId, pixie, responseTopic, reqId);
     }
   } catch (err) {
-    console.error(`[MQTT:photo] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:photo] Error para frame ${pixieId}:`, err);
   }
 }
 
@@ -359,7 +360,7 @@ async function serveDirectPhoto(pixieId: number, photo: any, responseTopic: stri
     },
   });
 
-  console.log(`[MQTT:photo] Foto enviada a pixie ${pixieId}: "${title}" reqId=${reqId} (${finalBuffer.length} bytes)`);
+  console.log(`[MQTT:photo] Foto enviada a frame ${pixieId}: "${title}" reqId=${reqId} (${finalBuffer.length} bytes)`);
 }
 
 // Helper: serve photo using photo_cursor (playlist-aware)
@@ -400,7 +401,7 @@ async function servePhotoFace(pixieId: number, pixie: any, responseTopic: string
   });
 
   if (photos.length === 0) {
-    console.log(`[MQTT:photo] No hay fotos para pixie ${pixieId}`);
+    console.log(`[MQTT:photo] No hay fotos para frame ${pixieId}`);
     return;
   }
 
@@ -449,7 +450,7 @@ async function serveStocksFace(pixieId: number, playlistItem: any, responseTopic
       },
     });
 
-    console.log(`[MQTT:photo] Stocks face enviado a pixie ${pixieId}: ${ticker} ${timeframe} reqId=${reqId} (${finalBuffer.length} bytes)`);
+    console.log(`[MQTT:photo] Stocks face enviado a frame ${pixieId}: ${ticker} ${timeframe} reqId=${reqId} (${finalBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:photo] Error generando stocks face para ${ticker}:`, err);
   }
@@ -477,7 +478,7 @@ async function serveDayNightFace(pixieId: number, responseTopic: string, reqId?:
       },
     });
 
-    console.log(`[MQTT:photo] DayNight face enviado a pixie ${pixieId} reqId=${reqId} (${finalBuffer.length} bytes)`);
+    console.log(`[MQTT:photo] DayNight face enviado a frame ${pixieId} reqId=${reqId} (${finalBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:photo] Error generando daynight face:`, err);
   }
@@ -485,11 +486,11 @@ async function serveDayNightFace(pixieId: number, responseTopic: string, reqId?:
 
 // ============================================================================
 // HANDLER: OTA Request
-// Topic: pixie/{id}/request/ota -> pixie/{id}/response/ota
+// Topic: frame/{id}/request/ota -> frame/{id}/response/ota
 // Response: {"version":15,"url":"https://..."}
 // ============================================================================
 export async function handleOtaRequest(pixieId: number): Promise<void> {
-  const responseTopic = `pixie/${pixieId}/response/ota`;
+  const responseTopic = `frame/${pixieId}/response/ota`;
 
   try {
     const version = await prisma.code_versions.findFirst({
@@ -508,19 +509,19 @@ export async function handleOtaRequest(pixieId: number): Promise<void> {
       url: url
     });
 
-    console.log(`[MQTT:ota] Versión ${version.version} enviada a pixie ${pixieId}`);
+    console.log(`[MQTT:ota] Versión ${version.version} enviada a frame ${pixieId}`);
   } catch (err) {
-    console.error(`[MQTT:ota] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:ota] Error para frame ${pixieId}:`, err);
   }
 }
 
 // ============================================================================
 // HANDLER: Config Request
-// Topic: pixie/{id}/request/config -> pixie/{id}/response/config
+// Topic: frame/{id}/request/config -> frame/{id}/response/config
 // Response: {"brightness":50,"pictures_on_queue":10,"spotify_enabled":true,...}
 // ============================================================================
 export async function handleConfigRequest(pixieId: number): Promise<void> {
-  const responseTopic = `pixie/${pixieId}/response/config`;
+  const responseTopic = `frame/${pixieId}/response/config`;
 
   try {
     const pixie = await prisma.pixie.findUnique({
@@ -532,7 +533,7 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
     });
 
     if (!pixie) {
-      console.log(`[MQTT:config] Pixie ${pixieId} no encontrado`);
+      console.log(`[MQTT:config] Frame ${pixieId} no encontrado`);
       return;
     }
 
@@ -543,7 +544,6 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       pictures_on_queue: playlistLength,
       spotify_enabled: pixie.spotify_enabled ?? false,
       secs_between_photos: pixie.secs_between_photos ?? 30,
-      code: pixie.code ?? '',
       schedule_enabled: pixie.schedule_enabled ?? false,
       schedule_on_hour: pixie.schedule_on_hour ?? 8,
       schedule_on_minute: pixie.schedule_on_minute ?? 0,
@@ -553,8 +553,8 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       timezone_offset: pixie.users?.timezone_offset ?? 0
     });
 
-    console.log(`[MQTT:config] Config enviada a pixie ${pixieId}`);
+    console.log(`[MQTT:config] Config enviada a frame ${pixieId}`);
   } catch (err) {
-    console.error(`[MQTT:config] Error para pixie ${pixieId}:`, err);
+    console.error(`[MQTT:config] Error para frame ${pixieId}:`, err);
   }
 }
