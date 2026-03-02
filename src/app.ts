@@ -21,7 +21,7 @@ const app = express();
 app.use(cors({
   origin: '*', // Permite todas las solicitudes (puedes restringirlo)
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos permitidos
-  allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'], // Headers permitidos
 }));
 
 app.use(express.json({ limit: "10mb" })); // Aumenta el límite si las imágenes son grandes

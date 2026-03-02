@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { publicRouter } from './public/public.routes';
 import { privateRouter } from "./private/private.routes";
 import { guessRouter } from './guess/guess.routes';
+import { adminRouter } from './admin/admin.routes';
 // Otras rutas que tengas
 
 export const mainRouter = Router();
@@ -14,6 +15,8 @@ mainRouter.use('/public', publicRouter);
 mainRouter.use('/api', privateRouter);
 
 mainRouter.use('/guess', guessRouter);
+
+mainRouter.use('/admin', adminRouter);
 
 mainRouter.get('/', (req, res) => {
   res.send('Hello, world!');
