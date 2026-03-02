@@ -9,8 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_ROOT="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$BACKEND_ROOT/../Spotipyx"
-MAIN_CPP="$PROJECT_ROOT/src/main.cpp"
-BUILD_DIR="$PROJECT_ROOT/.pio/build/esp32dev"
+BUILD_DIR="$PROJECT_ROOT/.pio/build/release"
 FIRMWARE_BIN="$BUILD_DIR/firmware.bin"
 
 # Colores para output
@@ -20,19 +19,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Funcion para limpiar en caso de error
-cleanup() {
-    if [ "$DEV_MODIFIED" = true ]; then
-        echo -e "\n${YELLOW}Revirtiendo DEV a true...${NC}"
-        sed -i '' 's/const bool DEV = false;/const bool DEV = true;/' "$MAIN_CPP"
-        echo -e "${GREEN}DEV revertido${NC}"
-    fi
-}
-
-# Trap para asegurar cleanup en caso de error
-trap cleanup EXIT
-
-DEV_MODIFIED=false
+# No cleanup needed — release/debug are separate PlatformIO environments
 
 echo ""
 echo -e "${BLUE}========================================"
@@ -46,14 +33,9 @@ if [ ! -d "$PROJECT_ROOT" ]; then
     exit 1
 fi
 
-if [ ! -f "$MAIN_CPP" ]; then
-    echo -e "${RED}ERROR: No se encontro main.cpp en: $MAIN_CPP${NC}"
-    exit 1
-fi
-
 # --- PASO 1: Verificar pre-condiciones ---
 
-echo -e "${BLUE}[1/8] Verificando pre-condiciones...${NC}"
+echo -e "${BLUE}[1/7] Verificando pre-condiciones...${NC}"
 
 # 1.1 Verificar rama actual
 echo -n "  Verificando rama git... "
@@ -84,24 +66,11 @@ if [ -n "$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)" ]; then
 fi
 echo -e "${GREEN}OK (limpio)${NC}"
 
-# 1.3 Verificar que DEV esta en true (estado normal)
-echo -n "  Verificando variable DEV... "
-DEV_VALUE=$(grep -E "^const bool DEV = " "$MAIN_CPP" | grep -oE "(true|false)" || echo "not_found")
-if [ "$DEV_VALUE" = "not_found" ]; then
-    echo -e "${RED}FALLO${NC}"
-    echo "  ERROR: No se encontro la variable DEV en main.cpp"
-    exit 1
-elif [ "$DEV_VALUE" = "false" ]; then
-    echo -e "${YELLOW}ADVERTENCIA: DEV ya esta en false${NC}"
-else
-    echo -e "${GREEN}OK (DEV=$DEV_VALUE)${NC}"
-fi
-
 echo ""
 
 # --- PASO 2: Obtener version actual ---
 
-echo -e "${BLUE}[2/8] Obteniendo version actual...${NC}"
+echo -e "${BLUE}[2/7] Obteniendo version actual...${NC}"
 cd "$BACKEND_ROOT"
 CURRENT_VERSION=$(npx ts-node scripts/release-helper.ts get-version 2>/dev/null | tail -1)
 if [ -z "$CURRENT_VERSION" ] || ! [[ "$CURRENT_VERSION" =~ ^[0-9]+$ ]]; then
@@ -116,7 +85,7 @@ echo ""
 
 # --- PASO 3: Solicitar comentarios ---
 
-echo -e "${BLUE}[3/8] Comentarios para la version${NC}"
+echo -e "${BLUE}[3/7] Comentarios para la version${NC}"
 echo "  (opcional, presiona Enter para omitir)"
 read -p "  > " COMMENTS
 echo ""
@@ -139,26 +108,11 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 echo ""
 
-# --- PASO 5: Cambiar DEV a false ---
+# --- PASO 4: Compilar firmware (release environment) ---
 
-echo -e "${BLUE}[4/8] Cambiando DEV a false...${NC}"
-sed -i '' 's/const bool DEV = true;/const bool DEV = false;/' "$MAIN_CPP"
-DEV_MODIFIED=true
-
-# Verificar el cambio
-NEW_DEV_VALUE=$(grep -E "^const bool DEV = " "$MAIN_CPP" | grep -oE "(true|false)")
-if [ "$NEW_DEV_VALUE" != "false" ]; then
-    echo -e "${RED}ERROR: No se pudo cambiar DEV a false${NC}"
-    exit 1
-fi
-echo -e "  ${GREEN}DEV cambiado a false${NC}"
-echo ""
-
-# --- PASO 6: Compilar firmware ---
-
-echo -e "${BLUE}[5/8] Compilando firmware...${NC}"
+echo -e "${BLUE}[4/7] Compilando firmware (release)...${NC}"
 cd "$PROJECT_ROOT"
-if ! pio run -e esp32dev; then
+if ! pio run -e release; then
     echo -e "${RED}ERROR: Fallo la compilacion${NC}"
     exit 1
 fi
@@ -172,16 +126,8 @@ FIRMWARE_SIZE=$(ls -lh "$FIRMWARE_BIN" | awk '{print $5}')
 echo -e "  ${GREEN}Compilacion exitosa${NC} (tamano: $FIRMWARE_SIZE)"
 echo ""
 
-# --- PASO 7: Revertir DEV a true ---
-
-echo -e "${BLUE}[6/8] Revirtiendo DEV a true...${NC}"
-sed -i '' 's/const bool DEV = false;/const bool DEV = true;/' "$MAIN_CPP"
-DEV_MODIFIED=false
-echo -e "  ${GREEN}DEV revertido a true${NC}"
-echo ""
-
-# --- PASO 8: Subir a MinIO y registrar en BD ---
-echo -e "${BLUE}[7/8] Subiendo firmware a MinIO...${NC}"
+# --- PASO 5: Subir a MinIO y registrar en BD ---
+echo -e "${BLUE}[5/7] Subiendo firmware a MinIO...${NC}"
 FIRMWARE_FILENAME="firmware_v${NEXT_VERSION}.bin"
 
 cd "$BACKEND_ROOT"
@@ -195,8 +141,8 @@ if ! npx ts-node scripts/release-helper.ts upload \
 fi
 echo ""
 
-# --- PASO 9: Crear tag git ---
-echo -e "${BLUE}[8/8] Creando tag git...${NC}"
+# --- PASO 6: Crear tag git ---
+echo -e "${BLUE}[6/7] Creando tag git...${NC}"
 cd "$PROJECT_ROOT"
 TAG_NAME="v$NEXT_VERSION"
 TAG_MESSAGE="${COMMENTS:-Firmware release v$NEXT_VERSION}"

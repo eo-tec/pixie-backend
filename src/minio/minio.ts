@@ -3,10 +3,21 @@ import * as mime from "mime-types";
 
 const publicUrl = process.env.MINIO_PUBLIC_URL || "bucket.mypixelframe.com";
 
+// Internal client for uploads/downloads within Docker network
 const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT || "bucket.mypixelframe.com",
   port: parseInt(process.env.MINIO_PORT || "80"),
   useSSL: false,
+  accessKey: process.env.MINIO_ACCESS_KEY,
+  secretKey: process.env.MINIO_SECRET_KEY,
+  region: "euw",
+});
+
+// Public client for generating presigned URLs accessible from the internet
+const publicMinioClient = new Client({
+  endPoint: publicUrl,
+  port: 443,
+  useSSL: true,
   accessKey: process.env.MINIO_ACCESS_KEY,
   secretKey: process.env.MINIO_SECRET_KEY,
   region: "euw",
@@ -82,9 +93,9 @@ export const checkFile = async (fileName: string) => {
   }
 };
 
-// Function to get presigned url
+// Function to get presigned url (uses public endpoint for external access)
 export const getPresignedUrl = async (fileName: string) => {
-  const url = await minioClient.presignedUrl(
+  const url = await publicMinioClient.presignedUrl(
     "GET",
     process.env.MINIO_BUCKET || "photos",
     fileName,
@@ -94,7 +105,7 @@ export const getPresignedUrl = async (fileName: string) => {
 };
 
 export const getPresignedUrlBin = async (fileName: string) => {
-  const url = await minioClient.presignedUrl(
+  const url = await publicMinioClient.presignedUrl(
     "GET",
     "versions",
     fileName,
