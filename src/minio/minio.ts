@@ -95,9 +95,10 @@ export const getPresignedUrl = async (fileName: string) => {
   return url;
 };
 
-// Direct public HTTP URL for versions bucket (HTTP, not HTTPS — ESP32 lacks heap for TLS)
+// HTTP-only URL for firmware downloads (ESP32 lacks heap for TLS handshake)
+const arduinoPublicUrl = process.env.MINIO_ARDUINO_URL || "bucketarduino.frame64.fun";
 export const getPresignedUrlBin = async (fileName: string) => {
-  return `http://${publicUrl}/versions/${fileName}`;
+  return `http://${arduinoPublicUrl}/versions/${fileName}`;
 };
 
 export default minioClient;
