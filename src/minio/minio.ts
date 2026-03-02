@@ -13,15 +13,6 @@ const minioClient = new Client({
   region: "euw",
 });
 
-// Public client for generating presigned URLs accessible from the internet
-const publicMinioClient = new Client({
-  endPoint: publicUrl,
-  port: 443,
-  useSSL: true,
-  accessKey: process.env.MINIO_ACCESS_KEY,
-  secretKey: process.env.MINIO_SECRET_KEY,
-  region: "euw",
-});
 
 // Function to check bucket "photos"
 export const checkBucket = async () => {
@@ -93,9 +84,9 @@ export const checkFile = async (fileName: string) => {
   }
 };
 
-// Function to get presigned url (uses public endpoint for external access)
+// Function to get presigned url
 export const getPresignedUrl = async (fileName: string) => {
-  const url = await publicMinioClient.presignedUrl(
+  const url = await minioClient.presignedUrl(
     "GET",
     process.env.MINIO_BUCKET || "photos",
     fileName,
@@ -104,14 +95,9 @@ export const getPresignedUrl = async (fileName: string) => {
   return url;
 };
 
+// Direct public URL for versions bucket (bucket is public, no presigned URL needed)
 export const getPresignedUrlBin = async (fileName: string) => {
-  const url = await publicMinioClient.presignedUrl(
-    "GET",
-    "versions",
-    fileName,
-    3600
-  );
-  return url;
+  return `https://${publicUrl}/versions/${fileName}`;
 };
 
 export default minioClient;
