@@ -95,9 +95,9 @@ export const getPresignedUrl = async (fileName: string) => {
   return url;
 };
 
-// Direct public URL for versions bucket (bucket is public, no presigned URL needed)
+// Direct public HTTP URL for versions bucket (HTTP, not HTTPS — ESP32 lacks heap for TLS)
 export const getPresignedUrlBin = async (fileName: string) => {
-  return `https://${publicUrl}/versions/${fileName}`;
+  return `http://${publicUrl}/versions/${fileName}`;
 };
 
 export default minioClient;
