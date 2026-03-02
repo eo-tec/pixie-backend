@@ -1,6 +1,7 @@
 // src/mqtt/handlers.ts
 // Handlers para requests MQTT del ESP32
 
+import { randomBytes } from 'crypto';
 import sharp from 'sharp';
 import SpotifyWebApi from 'spotify-web-api-node';
 import prisma from '../services/prisma';
@@ -9,6 +10,7 @@ import { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } from '
 import { publishBinary, publishToMQTT } from './client';
 import { generateStocksImage } from '../faces/stocks';
 import { generateDayNightImage } from '../faces/daynight';
+import { createDeviceClient } from './dynSec';
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
@@ -50,11 +52,30 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
       console.log(`[MQTT:register] Nuevo pixie creado: ${pixie.id}`);
     }
 
+    // Generate or reuse per-device MQTT token
+    let deviceToken = pixie.mqtt_password;
+    if (!deviceToken) {
+      deviceToken = randomBytes(24).toString('base64url');
+      await prisma.pixie.update({
+        where: { id: pixie.id },
+        data: { mqtt_password: deviceToken },
+      });
+      console.log(`[MQTT:register] Generated new MQTT token for frame ${pixie.id}`);
+    }
+
+    // Create MQTT account via Dynamic Security plugin
+    try {
+      await createDeviceClient(mac, deviceToken, pixie.id);
+    } catch (dynSecErr) {
+      console.warn(`[MQTT:register] DynSec provisioning failed (non-fatal):`, dynSecErr);
+    }
+
     // Enviar respuesta
     publishToMQTT(responseTopic, {
       pixieId: pixie.id,  // backward compat firmware viejo
       frameId: pixie.id,  // campo nuevo
-      code: pixie.code || "0000"
+      code: pixie.code || "0000",
+      deviceToken,         // per-device MQTT credential
     });
 
     console.log(`[MQTT:register] Respuesta enviada a ${responseTopic}`);

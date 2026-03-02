@@ -1,4 +1,6 @@
+import { randomBytes } from 'crypto';
 import mqtt from 'mqtt';
+import prisma from '../services/prisma';
 import {
   handleSongRequest,
   handleCoverRequest,
@@ -7,6 +9,7 @@ import {
   handleConfigRequest,
   handleRegisterRequest
 } from './handlers';
+import { createDeviceClient } from './dynSec';
 
 // Frame online tracking (in-memory)
 const frameLastSeen = new Map<number, Date>();
@@ -36,6 +39,7 @@ const MQTT_REGISTER_TOPICS = [
   'frame/mac/+/request/register',
   'pixie/mac/+/request/register', // backward compat firmwares viejos
 ];
+const DYNSEC_RESPONSE_TOPIC = '$CONTROL/dynamic-security/v1/response';
 
 let client: mqtt.MqttClient;
 
@@ -43,18 +47,19 @@ export const connectMQTT = () => {
   client = mqtt.connect(MQTT_BROKER_URL, {
     username: process.env.MQTT_BROKER_USERNAME,
     password: process.env.MQTT_BROKER_PASSWORD,
+    rejectUnauthorized: MQTT_BROKER_URL.startsWith('mqtts://'),
   });
 
   client.on('connect', () => {
-    console.log(`📡 Conectado a MQTT en ${MQTT_BROKER_URL}`);
+    console.log(`Connected to MQTT at ${MQTT_BROKER_URL}`);
 
     // Suscribirse a requests de los ESP32 (frame/ + pixie/ backward compat)
     for (const topic of MQTT_REQUEST_TOPICS) {
       client.subscribe(topic, { qos: 1 }, (err) => {
         if (err) {
-          console.error(`❌ Error suscribiéndose a ${topic}:`, err);
+          console.error(`Error subscribing to ${topic}:`, err);
         } else {
-          console.log(`📥 Suscrito a ${topic}`);
+          console.log(`Subscribed to ${topic}`);
         }
       });
     }
@@ -63,29 +68,87 @@ export const connectMQTT = () => {
     for (const topic of MQTT_REGISTER_TOPICS) {
       client.subscribe(topic, { qos: 1 }, (err) => {
         if (err) {
-          console.error(`❌ Error suscribiéndose a ${topic}:`, err);
+          console.error(`Error subscribing to ${topic}:`, err);
         } else {
-          console.log(`📥 Suscrito a ${topic}`);
+          console.log(`Subscribed to ${topic}`);
         }
       });
     }
+
+    // Subscribe to Dynamic Security plugin responses for logging
+    client.subscribe(DYNSEC_RESPONSE_TOPIC, { qos: 1 }, (err) => {
+      if (err) {
+        console.warn(`[DynSec] Could not subscribe to response topic (plugin may not be active):`, err.message);
+      } else {
+        console.log(`Subscribed to ${DYNSEC_RESPONSE_TOPIC}`);
+      }
+    });
+
+    // Provision MQTT accounts for existing devices without mqtt_password
+    provisionExistingDevices();
   });
 
   client.on('error', (err) => {
-    console.error('❌ Error en MQTT:', err);
+    console.error('MQTT error:', err);
   });
 
   client.on('message', handleMqttMessage);
 };
 
+/**
+ * Provision MQTT accounts for devices that were registered before auth was added.
+ * Runs once on connect — generates mqtt_password and creates dynsec client for each.
+ */
+async function provisionExistingDevices(): Promise<void> {
+  try {
+    const unprovisionedDevices = await prisma.pixie.findMany({
+      where: { mqtt_password: null },
+    });
+
+    if (unprovisionedDevices.length === 0) return;
+
+    console.log(`[DynSec] Provisioning ${unprovisionedDevices.length} existing devices...`);
+
+    for (const device of unprovisionedDevices) {
+      try {
+        const token = randomBytes(24).toString('base64url');
+        await prisma.pixie.update({
+          where: { id: device.id },
+          data: { mqtt_password: token },
+        });
+        await createDeviceClient(device.mac, token, device.id);
+        console.log(`[DynSec] Provisioned device: ${device.mac} (frame ${device.id})`);
+      } catch (err) {
+        console.warn(`[DynSec] Failed to provision device ${device.mac}:`, err);
+      }
+    }
+
+    console.log(`[DynSec] Provisioning complete`);
+  } catch (err) {
+    console.error(`[DynSec] Error during provisioning:`, err);
+  }
+}
+
 // Router de mensajes MQTT
 async function handleMqttMessage(topic: string, payload: Buffer) {
+  // Log Dynamic Security plugin responses
+  if (topic === DYNSEC_RESPONSE_TOPIC) {
+    try {
+      const response = JSON.parse(payload.toString());
+      const hasErrors = response.responses?.some((r: any) => r.error);
+      if (hasErrors) {
+        console.warn(`[DynSec] Response with errors:`, JSON.stringify(response));
+      }
+    } catch { /* ignore parse errors */ }
+    return;
+  }
+
   const parts = topic.split('/');
 
   // Manejar registro por MAC: frame/mac/{MAC}/request/register (o pixie/ backward compat)
   if (parts.length >= 5 && (parts[0] === 'frame' || parts[0] === 'pixie') && parts[1] === 'mac' && parts[3] === 'request' && parts[4] === 'register') {
     const mac = parts[2];
-    console.log(`📨 [MQTT] Register request para MAC: ${mac}`);
+    console.log(`[MQTT] Register request for MAC: ${mac}`);
     await handleRegisterRequest(mac);
     return;
   }
@@ -99,12 +162,12 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
   const requestType = parts[3];
 
   if (isNaN(pixieId)) {
-    console.error(`[MQTT] pixieId inválido en topic: ${topic}`);
+    console.error(`[MQTT] Invalid pixieId in topic: ${topic}`);
     return;
   }
 
   updateFrameLastSeen(pixieId);
-  console.log(`📨 [MQTT] Request recibido: ${requestType} para frame ${pixieId}`);
+  console.log(`[MQTT] Request: ${requestType} for frame ${pixieId}`);
 
   try {
     switch (requestType) {
@@ -140,16 +203,16 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
         break;
 
       default:
-        console.log(`[MQTT] Tipo de request desconocido: ${requestType}`);
+        console.log(`[MQTT] Unknown request type: ${requestType}`);
     }
   } catch (err) {
-    console.error(`[MQTT] Error procesando ${requestType} para frame ${pixieId}:`, err);
+    console.error(`[MQTT] Error processing ${requestType} for frame ${pixieId}:`, err);
   }
 }
 
 export const publishToMQTT = (topic: string, message: string | object) => {
   if (!client || !client.connected) {
-    console.error('⚠️ No se puede publicar en MQTT: Cliente no conectado');
+    console.error('Cannot publish to MQTT: client not connected');
     return;
   }
 
@@ -157,7 +220,7 @@ export const publishToMQTT = (topic: string, message: string | object) => {
 
   client.publish(topic, messageToSend, { qos: 1 }, (err) => {
     if (err) {
-      console.error('❌ Error publicando en MQTT:', err);
+      console.error('Error publishing to MQTT:', err);
     }
   });
 };
@@ -165,13 +228,13 @@ export const publishToMQTT = (topic: string, message: string | object) => {
 // Publicar datos binarios (Buffer)
 export const publishBinary = (topic: string, buffer: Buffer) => {
   if (!client || !client.connected) {
-    console.error('⚠️ No se puede publicar en MQTT: Cliente no conectado');
+    console.error('Cannot publish to MQTT: client not connected');
     return;
   }
 
   client.publish(topic, buffer, { qos: 1 }, (err) => {
     if (err) {
-      console.error('❌ Error publicando binario en MQTT:', err);
+      console.error('Error publishing binary to MQTT:', err);
     }
   });
 };
