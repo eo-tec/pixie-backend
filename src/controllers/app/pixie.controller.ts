@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT, isFrameOnline, getFrameLastSeen } from '../../mqtt/client';
 import { pixie } from "@prisma/client";
+import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
 
 // Endpoint para verificar si un frame está registrado (usado durante provisioning BLE)
 export const checkFrameRegistration = async (req: Request, res: Response) => {
@@ -123,7 +124,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     // Actualizar el pixie - filtrar solo campos actualizables
-    const { id, created_at, created_by, mac, current_photo_id, current_song_id, current_song_name, ...updateData } = pixie;
+    const { id, created_at, created_by, mac, current_photo_id, current_song_id, current_song_name, tier, ...updateData } = pixie;
     const updatedPixie = await prisma.pixie.update({
       where: { id: pixieId },
       data: updateData
@@ -135,14 +136,15 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       : null;
 
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
+    const pixieTier = updatedPixie.tier;
     publishToMQTT(`frame/${existingPixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
-      pictures_on_queue: updatedPixie.pictures_on_queue,
-      spotify_enabled: updatedPixie.spotify_enabled,
+      pictures_on_queue: effectivePhotos(pixieTier, updatedPixie.pictures_on_queue ?? 5),
+      spotify_enabled: effectiveBoolean(pixieTier, 'spotify_enabled', updatedPixie.spotify_enabled),
       secs_between_photos: updatedPixie.secs_between_photos,
       code: updatedPixie.code,
-      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_enabled: effectiveBoolean(pixieTier, 'schedule_enabled', updatedPixie.schedule_enabled),
       schedule_on_hour: updatedPixie.schedule_on_hour,
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
@@ -240,14 +242,15 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
 
     // Enviar mensaje MQTT con campos en el root (formato esperado por ESP32)
+    const activateTier = updatedPixie.tier;
     publishToMQTT(`frame/${updatedPixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
-      pictures_on_queue: updatedPixie.pictures_on_queue,
-      spotify_enabled: updatedPixie.spotify_enabled,
+      pictures_on_queue: effectivePhotos(activateTier, updatedPixie.pictures_on_queue ?? 5),
+      spotify_enabled: effectiveBoolean(activateTier, 'spotify_enabled', updatedPixie.spotify_enabled),
       secs_between_photos: updatedPixie.secs_between_photos,
       code: updatedPixie.code,
-      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_enabled: effectiveBoolean(activateTier, 'schedule_enabled', updatedPixie.schedule_enabled),
       schedule_on_hour: updatedPixie.schedule_on_hour,
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
@@ -354,14 +357,15 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
 
     // Enviar config al frame via MQTT
+    const registerTier = updatedPixie.tier;
     publishToMQTT(`frame/${pixie.id}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie.brightness,
-      pictures_on_queue: updatedPixie.pictures_on_queue,
-      spotify_enabled: updatedPixie.spotify_enabled,
+      pictures_on_queue: effectivePhotos(registerTier, updatedPixie.pictures_on_queue ?? 5),
+      spotify_enabled: effectiveBoolean(registerTier, 'spotify_enabled', updatedPixie.spotify_enabled),
       secs_between_photos: updatedPixie.secs_between_photos,
       code: updatedPixie.code,
-      schedule_enabled: updatedPixie.schedule_enabled,
+      schedule_enabled: effectiveBoolean(registerTier, 'schedule_enabled', updatedPixie.schedule_enabled),
       schedule_on_hour: updatedPixie.schedule_on_hour,
       schedule_on_minute: updatedPixie.schedule_on_minute,
       schedule_off_hour: updatedPixie.schedule_off_hour,
@@ -406,11 +410,12 @@ export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Resp
     // TODO: Verificar que son amigos antes de permitir ver los pixies
     // Por ahora lo dejamos sin validación de amistad
 
-    // Obtener pixies del usuario que permiten dibujo
+    // Obtener pixies del usuario que permiten dibujo (solo premium)
     const pixies = await prisma.pixie.findMany({
       where: {
         created_by: targetUser.id,
-        allow_draws: true
+        allow_draws: true,
+        tier: 'premium'
       },
     });
 

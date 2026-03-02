@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT } from '../../mqtt/client';
+import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
 
 // Helper: send config update to frame via MQTT after playlist changes
 async function notifyFramePlaylistChanged(pixieId: number) {
@@ -12,15 +13,16 @@ async function notifyFramePlaylistChanged(pixieId: number) {
   if (!pixie) return;
 
   const playlistLength = pixie.playlist_items?.length || pixie.pictures_on_queue || 1;
+  const tier = pixie.tier;
 
   publishToMQTT(`frame/${pixieId}`, JSON.stringify({
     action: "update_info",
     brightness: pixie.brightness ?? 50,
-    pictures_on_queue: playlistLength,
-    spotify_enabled: pixie.spotify_enabled ?? false,
+    pictures_on_queue: effectivePhotos(tier, playlistLength),
+    spotify_enabled: effectiveBoolean(tier, 'spotify_enabled', pixie.spotify_enabled ?? false),
     secs_between_photos: pixie.secs_between_photos ?? 30,
     code: pixie.code ?? '',
-    schedule_enabled: pixie.schedule_enabled ?? false,
+    schedule_enabled: effectiveBoolean(tier, 'schedule_enabled', pixie.schedule_enabled ?? false),
     schedule_on_hour: pixie.schedule_on_hour ?? 8,
     schedule_on_minute: pixie.schedule_on_minute ?? 0,
     schedule_off_hour: pixie.schedule_off_hour ?? 22,
@@ -155,15 +157,16 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
       : null;
 
     const updatedPixie = await prisma.pixie.findUnique({ where: { id: pixieId } });
+    const updateTier = updatedPixie?.tier ?? 'premium';
 
     publishToMQTT(`frame/${pixieId}`, JSON.stringify({
       action: "update_info",
       brightness: updatedPixie?.brightness ?? 50,
-      pictures_on_queue: items.length,
-      spotify_enabled: updatedPixie?.spotify_enabled ?? false,
+      pictures_on_queue: effectivePhotos(updateTier, items.length),
+      spotify_enabled: effectiveBoolean(updateTier, 'spotify_enabled', updatedPixie?.spotify_enabled ?? false),
       secs_between_photos: updatedPixie?.secs_between_photos ?? 30,
       code: updatedPixie?.code ?? '',
-      schedule_enabled: updatedPixie?.schedule_enabled ?? false,
+      schedule_enabled: effectiveBoolean(updateTier, 'schedule_enabled', updatedPixie?.schedule_enabled ?? false),
       schedule_on_hour: updatedPixie?.schedule_on_hour ?? 8,
       schedule_on_minute: updatedPixie?.schedule_on_minute ?? 0,
       schedule_off_hour: updatedPixie?.schedule_off_hour ?? 22,

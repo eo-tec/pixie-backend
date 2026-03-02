@@ -11,6 +11,7 @@ import { publishBinary, publishToMQTT } from './client';
 import { generateStocksImage } from '../faces/stocks';
 import { generateDayNightImage } from '../faces/daynight';
 import { createDeviceClient } from './dynSec';
+import { effectiveBoolean, effectivePhotos } from '../config/tierConfig';
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
@@ -37,7 +38,8 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
           mac: mac,
           name: "frame.",
           code: "0000",
-          pictures_on_queue: 1
+          pictures_on_queue: 1,
+          tier: 'free'
         }
       });
       // Create default playlist item
@@ -559,13 +561,14 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
     }
 
     const playlistLength = pixie.playlist_items?.length || pixie.pictures_on_queue || 5;
+    const tier = pixie.tier;
 
     publishToMQTT(responseTopic, {
       brightness: pixie.brightness ?? 50,
-      pictures_on_queue: playlistLength,
-      spotify_enabled: pixie.spotify_enabled ?? false,
+      pictures_on_queue: effectivePhotos(tier, playlistLength),
+      spotify_enabled: effectiveBoolean(tier, 'spotify_enabled', pixie.spotify_enabled ?? false),
       secs_between_photos: pixie.secs_between_photos ?? 30,
-      schedule_enabled: pixie.schedule_enabled ?? false,
+      schedule_enabled: effectiveBoolean(tier, 'schedule_enabled', pixie.schedule_enabled ?? false),
       schedule_on_hour: pixie.schedule_on_hour ?? 8,
       schedule_on_minute: pixie.schedule_on_minute ?? 0,
       schedule_off_hour: pixie.schedule_off_hour ?? 22,
