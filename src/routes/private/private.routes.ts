@@ -1,7 +1,7 @@
 // src/routes/index.ts
 import { Router } from 'express';
 import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility } from '../../controllers/app/photos.controller';
-import { verifyAuth } from './checkUser';
+import { verifyAuth, AuthenticatedRequest } from './checkUser';
 import { Request, Response } from 'express';
 import { getUser, getFriends, updateProfile, updateTimezone } from '../../controllers/app/user.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
@@ -12,6 +12,8 @@ import { pixiesRouter } from './pixies.routes';
 import { reactionsRouter } from './reactions.routes';
 import { commentsRouter } from './comments.routes';
 import { playlistRouter } from './playlist.routes';
+import { downloadFile } from '../../minio/minio';
+import prisma from '../../services/prisma';
 
 export const privateRouter = Router();
 
@@ -53,3 +55,68 @@ privateRouter.use('/', drawingRouter);
 // Reactions and comments routes
 privateRouter.use('/photos', reactionsRouter);
 privateRouter.use('/photos', commentsRouter);
+
+// Photo file proxy - serves photos from Minio after verifying access
+privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Response) => {
+  const filePath = (req.params as any)[0];
+  if (!filePath || !req.user) {
+    return res.status(400).send('Missing file path');
+  }
+
+  try {
+    // Find the photo by its url
+    const photo = await prisma.photos.findFirst({
+      where: { photo_url: filePath, deleted_at: null },
+      select: { id: true, user_id: true, is_public: true },
+    });
+
+    if (!photo) {
+      return res.status(404).send('Photo not found');
+    }
+
+    const userId = req.user.id;
+
+    // 1. Photo belongs to the user
+    if (photo.user_id === userId) {
+      // Access granted
+    }
+    // 2. Photo is in photo_visible_by_users for this user
+    else {
+      const visible = await prisma.photo_visible_by_users.findFirst({
+        where: { photo_id: photo.id, user_id: userId },
+      });
+
+      if (visible) {
+        // Access granted
+      }
+      // 3. Photo is public AND belongs to a friend
+      else if (photo.is_public) {
+        const friendship = await prisma.friends.findFirst({
+          where: {
+            status: 'accepted',
+            OR: [
+              { user_id_1: userId, user_id_2: photo.user_id },
+              { user_id_1: photo.user_id, user_id_2: userId },
+            ],
+          },
+        });
+
+        if (!friendship) {
+          return res.status(403).send('Access denied');
+        }
+      } else {
+        return res.status(403).send('Access denied');
+      }
+    }
+
+    // Stream the file from Minio
+    const stream = await downloadFile(filePath);
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    stream.pipe(res);
+  } catch (err) {
+    res.status(404).send('File not found');
+  }
+});
