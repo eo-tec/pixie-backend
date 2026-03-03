@@ -29,6 +29,7 @@ async function notifyFramePlaylistChanged(pixieId: number) {
     schedule_off_minute: pixie.schedule_off_minute ?? 0,
     clock_enabled: pixie.clock_enabled ?? false,
     timezone_offset: pixie.users?.timezone_offset ?? 0,
+    has_owner: pixie.created_by !== null,
   }));
 }
 

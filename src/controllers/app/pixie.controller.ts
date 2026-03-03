@@ -150,7 +150,8 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
-      timezone_offset: user?.timezone_offset ?? 0
+      timezone_offset: user?.timezone_offset ?? 0,
+      has_owner: !!updatedPixie.created_by
     }));
 
     res.status(200).json({ pixie: updatedPixie });
@@ -256,7 +257,8 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
-      timezone_offset: user?.timezone_offset ?? 0
+      timezone_offset: user?.timezone_offset ?? 0,
+      has_owner: true
     }));
 
     res.status(200).json({ pixie: updatedPixie });
@@ -371,13 +373,70 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
-      timezone_offset: user?.timezone_offset ?? 0
+      timezone_offset: user?.timezone_offset ?? 0,
+      has_owner: true
     }));
 
     res.status(200).json({ pixie: updatedPixie });
   } catch (error) {
     console.error("Error registrando frame con usuario:", error);
     res.status(500).json({ error: "Error al registrar el frame" });
+  }
+};
+
+export const unlinkPixie = async (req: AuthenticatedRequest, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID de pixie inválido" });
+    return;
+  }
+
+  try {
+    const pixie = await prisma.pixie.findFirst({
+      where: { id },
+    });
+
+    if (!pixie) {
+      res.status(404).json({ error: "Frame no encontrado" });
+      return;
+    }
+
+    if (pixie.created_by !== userId) {
+      res.status(403).json({ error: "No tienes permisos para desvincular este frame" });
+      return;
+    }
+
+    // Reset owner, name, and photo cursor
+    await prisma.pixie.update({
+      where: { id },
+      data: {
+        created_by: null,
+        name: "frame.",
+        photo_cursor: 0,
+        pictures_on_queue: 0,
+      },
+    });
+
+    // Delete all playlist items for this frame
+    await prisma.playlist_items.deleteMany({
+      where: { pixie_id: id },
+    });
+
+    // Send MQTT unlink action to the frame
+    publishToMQTT(`frame/${id}`, JSON.stringify({ action: "unlink" }));
+
+    console.log(`[Pixie] Frame ${id} desvinculado por usuario ${userId}`);
+    res.status(200).json({ message: "Frame desvinculado correctamente" });
+  } catch (error) {
+    console.error("Error al desvincular frame:", error);
+    res.status(500).json({ error: "Error al desvincular el frame" });
   }
 };
 
