@@ -75,10 +75,15 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
     }
 
     const userId = req.user.id;
+    const photoOwnerId = photo.user_id;
 
     // 1. Photo belongs to the user
-    if (photo.user_id === userId) {
+    if (photoOwnerId === userId) {
       // Access granted
+    }
+    // Photo has no owner — deny
+    else if (photoOwnerId === null) {
+      return res.status(403).send('Access denied');
     }
     // 2. Photo is in photo_visible_by_users for this user
     else {
@@ -95,8 +100,8 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
           where: {
             status: 'accepted',
             OR: [
-              { user_id_1: userId, user_id_2: photo.user_id },
-              { user_id_1: photo.user_id, user_id_2: userId },
+              { user_id_1: userId, user_id_2: photoOwnerId },
+              { user_id_1: photoOwnerId, user_id_2: userId },
             ],
           },
         });
