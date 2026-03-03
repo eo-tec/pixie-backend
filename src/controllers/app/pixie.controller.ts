@@ -385,7 +385,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
 };
 
 export const unlinkPixie = async (req: AuthenticatedRequest, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const userId = req.user?.id;
 
   if (!userId) {
