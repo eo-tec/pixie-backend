@@ -7,7 +7,7 @@ const publicUrl = process.env.MINIO_PUBLIC_URL || "bucket.mypixelframe.com";
 const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT || "bucket.mypixelframe.com",
   port: parseInt(process.env.MINIO_PORT || "80"),
-  useSSL: false,
+  useSSL: process.env.MINIO_USE_SSL === 'true',
   accessKey: process.env.MINIO_ACCESS_KEY,
   secretKey: process.env.MINIO_SECRET_KEY,
   region: "euw",
