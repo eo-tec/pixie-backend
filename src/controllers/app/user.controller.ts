@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../../routes/private/checkUser';
 import prisma from '../../services/prisma';
-import { uploadFile } from '../../minio/minio';
+import { uploadFile, deleteFile } from '../../minio/minio';
+import { deleteSupabaseUser } from '../../auth/supabase.auth';
 import sharp from 'sharp';
 
 async function getUser(req: AuthenticatedRequest, res: Response) {
@@ -252,4 +253,104 @@ async function updateProfile(req: AuthenticatedRequest, res: Response) {
     }
 }
 
-export { getUser, getFriends, updateProfile, updateTimezone };
+async function deleteAccount(req: AuthenticatedRequest, res: Response) {
+    const id = req.user?.id;
+    if (!id) {
+        res.status(401).json({ error: 'Usuario no autenticado' });
+        return;
+    }
+
+    try {
+        const user = await prisma.public_users.findFirst({
+            where: { id },
+            include: {
+                pixie: true,
+                photos: true,
+                spotify_credentials: true,
+            }
+        });
+
+        if (!user) {
+            res.status(404).json({ error: 'Usuario no encontrado' });
+            return;
+        }
+
+        // 1. Disassociate frames (pixies) — set created_by to null
+        await prisma.pixie.updateMany({
+            where: { created_by: id },
+            data: { created_by: null }
+        });
+
+        // 2. Delete profile picture from Minio if exists
+        if (user.picture) {
+            try {
+                // picture URL format: "bucket.frame64.fun/photos/profile-pictures/..."
+                // Extract the file path after the bucket name
+                const url = user.picture;
+                const bucketName = process.env.MINIO_BUCKET || 'photos';
+                const bucketIdx = url.indexOf(`/${bucketName}/`);
+                if (bucketIdx !== -1) {
+                    const filePath = url.substring(bucketIdx + `/${bucketName}/`.length);
+                    await deleteFile(filePath);
+                }
+            } catch (err) {
+                console.error('Error deleting profile picture from Minio:', err);
+                // Continue — don't block account deletion
+            }
+        }
+
+        // 3. Soft-delete photos
+        await prisma.photos.updateMany({
+            where: { user_id: id, deleted_at: null },
+            data: { deleted_at: new Date() }
+        });
+
+        // 4. Delete spotify_credentials
+        if (user.spotify_credentials) {
+            await prisma.spotify_credentials.delete({
+                where: { user_id: id }
+            });
+        }
+
+        // 5. Delete group subscriptions
+        await prisma.group_suscriber.deleteMany({
+            where: { user_id: id }
+        });
+
+        // 6. Delete friend relationships
+        await prisma.friends.deleteMany({
+            where: {
+                OR: [{ user_id_1: id }, { user_id_2: id }]
+            }
+        });
+
+        // 7. Anonymize user data + soft-delete
+        await prisma.public_users.update({
+            where: { id },
+            data: {
+                username: 'Deleted User',
+                bio: null,
+                picture: null,
+                telegram_id: null,
+                deleted_at: new Date(),
+            }
+        });
+
+        // 8. Delete user from Supabase Auth
+        if (user.user_id) {
+            try {
+                await deleteSupabaseUser(user.user_id);
+            } catch (err) {
+                console.error('Error deleting Supabase auth user:', err);
+                // User is already anonymized in DB, so we continue
+            }
+        }
+
+        res.status(200).json({ message: 'Cuenta eliminada correctamente' });
+    } catch (error) {
+        console.error('Error deleting account:', error);
+        res.status(500).json({ error: 'Error al eliminar la cuenta' });
+    }
+}
+
+export { getUser, getFriends, updateProfile, updateTimezone, deleteAccount };

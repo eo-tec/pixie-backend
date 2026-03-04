@@ -84,6 +84,16 @@ export const checkFile = async (fileName: string) => {
   }
 };
 
+// Function to delete a file from the bucket
+export const deleteFile = async (fileName: string, bucket?: string) => {
+  try {
+    await minioClient.removeObject(bucket || process.env.MINIO_BUCKET || "photos", fileName);
+  } catch (error) {
+    console.error(`Error deleting file "${fileName}":`, error);
+    throw error;
+  }
+};
+
 // Function to get presigned url
 export const getPresignedUrl = async (fileName: string) => {
   const url = await minioClient.presignedUrl(
