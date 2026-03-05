@@ -92,7 +92,7 @@ model pixie {
   schedule_off_hour   Int?               @default(22)
   schedule_off_minute Int?               @default(0)
   clock_enabled       Boolean            @default(false)
-  tier                PixieTier          @default(premium)
+  tier                PixieTier          @default(free)
   mqtt_password       String?
   current_photo_id    Int?
   current_song_id     String?

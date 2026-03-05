@@ -210,7 +210,8 @@ async function updateProfile(req: AuthenticatedRequest, res: Response) {
                     .toBuffer();
 
                 const fileName = `profile-pictures/${id}-${Date.now()}.jpg`;
-                pictureUrl = await uploadFile(processedBuffer, fileName, 'image/jpeg');
+                await uploadFile(processedBuffer, fileName, 'image/jpeg');
+                pictureUrl = fileName; // store relative path, served via proxy
             } catch (imageError) {
                 console.error('Error processing profile picture:', imageError);
                 res.status(400).json({ error: 'Error al procesar la imagen' });
@@ -284,15 +285,7 @@ async function deleteAccount(req: AuthenticatedRequest, res: Response) {
         // 2. Delete profile picture from Minio if exists
         if (user.picture) {
             try {
-                // picture URL format: "bucket.frame64.fun/photos/profile-pictures/..."
-                // Extract the file path after the bucket name
-                const url = user.picture;
-                const bucketName = process.env.MINIO_BUCKET || 'photos';
-                const bucketIdx = url.indexOf(`/${bucketName}/`);
-                if (bucketIdx !== -1) {
-                    const filePath = url.substring(bucketIdx + `/${bucketName}/`.length);
-                    await deleteFile(filePath);
-                }
+                await deleteFile(user.picture);
             } catch (err) {
                 console.error('Error deleting profile picture from Minio:', err);
                 // Continue — don't block account deletion

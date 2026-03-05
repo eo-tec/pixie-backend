@@ -27,6 +27,21 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+// Public proxy for profile pictures (no per-photo auth needed, only serves profile-pictures/ prefix)
+mainRouter.get('/api/photo/file/profile-pictures/*', async (req: Request, res: Response) => {
+  const filePath = 'profile-pictures/' + (req.params as any)[0];
+  try {
+    const stream = await downloadFile(filePath);
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    stream.pipe(res);
+  } catch (err) {
+    res.status(404).send('File not found');
+  }
+});
+
 // Public routes
 mainRouter.use('/public', publicRouter);
 
