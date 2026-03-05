@@ -2,6 +2,25 @@ import { Request, Response } from "express";
 import prisma from "../../services/prisma";
 import { cleanUsername } from "../../utils/string-utils";
 
+export const checkUsername = async (req: Request, res: Response) => {
+  const { username } = req.params;
+  if (!username || username.length < 3) {
+    res.status(400).json({ available: false, error: "Username must be at least 3 characters" });
+    return;
+  }
+
+  try {
+    const cleaned = cleanUsername(username);
+    const existing = await prisma.public_users.findFirst({
+      where: { username: cleaned },
+    });
+    res.json({ available: !existing, username: cleaned });
+  } catch (error) {
+    console.error("Error checking username:", error);
+    res.status(500).json({ available: false, error: "Internal server error" });
+  }
+};
+
 export const newUser = async (req: Request, res: Response) => {
     const { username, user_id } = req.body;
     if (!username || !user_id) {
