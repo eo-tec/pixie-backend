@@ -141,6 +141,28 @@ if ! npx ts-node scripts/release-helper.ts upload \
 fi
 echo ""
 
+# --- PASO 5b: Subir bootloader, partitions y boot_app0 ---
+echo -e "${BLUE}[5b/7] Subiendo ficheros auxiliares de flash...${NC}"
+
+BOOTLOADER_BIN="$BUILD_DIR/bootloader.bin"
+PARTITIONS_BIN="$BUILD_DIR/partitions.bin"
+BOOT_APP0_BIN="$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
+
+for PART_FILE in "$BOOTLOADER_BIN:bootloader.bin" "$PARTITIONS_BIN:partitions.bin" "$BOOT_APP0_BIN:boot_app0.bin"; do
+    SRC="${PART_FILE%%:*}"
+    DST="${PART_FILE##*:}"
+    if [ -f "$SRC" ]; then
+        if npx ts-node scripts/release-helper.ts upload-part --file "$SRC" --filename "$DST"; then
+            echo -e "  ${GREEN}$DST subido${NC}"
+        else
+            echo -e "  ${YELLOW}ADVERTENCIA: No se pudo subir $DST${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}ADVERTENCIA: No se encontro $SRC${NC}"
+    fi
+done
+echo ""
+
 # --- PASO 6: Crear tag git ---
 echo -e "${BLUE}[6/7] Creando tag git...${NC}"
 cd "$PROJECT_ROOT"

@@ -71,6 +71,27 @@ async function uploadFirmware(
   console.log('Version registrada correctamente');
 }
 
+async function uploadPart(filePath: string, filename: string): Promise<void> {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Archivo no encontrado: ${filePath}`);
+  }
+
+  await ensureVersionsBucket();
+
+  const fileBuffer = fs.readFileSync(filePath);
+  const fileSize = fs.statSync(filePath).size;
+
+  console.log(`Subiendo ${filename} a bucket '${VERSIONS_BUCKET}'...`);
+  await minioClient.putObject(
+    VERSIONS_BUCKET,
+    filename,
+    fileBuffer,
+    fileSize,
+    { 'Content-Type': 'application/octet-stream' }
+  );
+  console.log(`Upload de ${filename} completado`);
+}
+
 // CLI
 async function main() {
   const args = process.argv.slice(2);
@@ -104,11 +125,29 @@ async function main() {
         break;
       }
 
+      case 'upload-part': {
+        const fileIdx = args.indexOf('--file');
+        const filenameIdx = args.indexOf('--filename');
+
+        if (fileIdx === -1 || filenameIdx === -1) {
+          console.error('Uso: upload-part --file PATH --filename NAME');
+          process.exit(1);
+        }
+
+        const file = args[fileIdx + 1];
+        const filename = args[filenameIdx + 1];
+
+        await uploadPart(file, filename);
+        break;
+      }
+
       default:
         console.log('Release Helper - Comandos disponibles:');
         console.log('  get-version                    Obtiene la ultima version');
         console.log('  upload --version N --file PATH --filename NAME [--comments TEXT]');
         console.log('                                 Sube firmware y registra version');
+        console.log('  upload-part --file PATH --filename NAME');
+        console.log('                                 Sube un fichero al bucket sin registrar version');
     }
   } catch (error) {
     console.error('Error:', error);
