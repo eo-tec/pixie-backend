@@ -261,9 +261,38 @@ export async function postPhoto(req: Request, res: Response) {
       }
     }
 
-    // Publicar en el topic pixie/visibleUserId por cada usuario visible
-    if (usersId && Array.isArray(usersId)) {
-      for (const visibleUserId of usersId) {
+    // Notificar frames de otros usuarios
+    const notifyUserIds: number[] = [];
+
+    if (isPublic) {
+      // Foto pública: notificar a todos los amigos aceptados
+      const friendships = await prisma.friends.findMany({
+        where: {
+          status: 'accepted',
+          OR: [{ user_id_1: user.id }, { user_id_2: user.id }],
+        },
+      });
+      for (const f of friendships) {
+        const friendId = f.user_id_1 === user.id ? f.user_id_2 : f.user_id_1;
+        notifyUserIds.push(friendId);
+      }
+    } else if (usersId && Array.isArray(usersId)) {
+      // Foto privada: notificar solo a los usuarios seleccionados
+      notifyUserIds.push(...usersId.map(Number));
+    }
+
+    if (notifyUserIds.length > 0) {
+      const sharedPixies = await prisma.pixie.findMany({
+        where: { created_by: { in: notifyUserIds } },
+      });
+      for (const pixie of sharedPixies) {
+        await publishToMQTT(
+          `frame/${pixie.id}`,
+          JSON.stringify({
+            action: "update_photo",
+            id: newPhoto.id,
+          })
+        );
       }
     }
 
