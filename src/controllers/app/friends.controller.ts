@@ -178,28 +178,47 @@ export const addFriend = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const deleteFriend = async (req: AuthenticatedRequest, res: Response) => {
-  const id = req.params.id as string;
-  if (!id) {
+  const friendUserId = req.params.id as string;
+  if (!friendUserId) {
     res.status(400).json({ error: "ID de usuario no proporcionado" });
     return;
   }
-  if (!req.user?.id) {
+  const userId = req.user?.id;
+  if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
   }
+
+  const parsedFriendUserId = parseInt(friendUserId);
+
+  const friendRecord = await prisma.friends.findFirst({
+    where: {
+      OR: [
+        { user_id_1: userId, user_id_2: parsedFriendUserId },
+        { user_id_1: parsedFriendUserId, user_id_2: userId },
+      ],
+    },
+  });
+
+  if (!friendRecord) {
+    res.status(404).json({ error: "Relación de amistad no encontrada" });
+    return;
+  }
+
   const friend = await prisma.friends.delete({
-    where: { id: parseInt(id) },
+    where: { id: friendRecord.id },
     include: {
       user1: true,
       user2: true,
     },
   });
+
   const friendWithStatus = {
     status: friend.status,
     user: {
-      id: friend.user1.id === req.user?.id ? friend.user2.id : friend.user1.id,
-      username: friend.user1.id === req.user?.id ? friend.user2.username : friend.user1.username,
-      picture: friend.user1.id === req.user?.id ? friend.user2.picture : friend.user1.picture,
+      id: friend.user1.id === userId ? friend.user2.id : friend.user1.id,
+      username: friend.user1.id === userId ? friend.user2.username : friend.user1.username,
+      picture: friend.user1.id === userId ? friend.user2.picture : friend.user1.picture,
     },
   };
   res.json(friendWithStatus as Friend);
