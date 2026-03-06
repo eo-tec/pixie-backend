@@ -13,6 +13,8 @@ import { generateDayNightImage } from '../faces/daynight';
 import { createDeviceClient } from './dynSec';
 import { effectiveBoolean, effectivePhotos } from '../config/tierConfig';
 
+const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
+
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
 // Topic: frame/mac/{MAC}/request/register -> frame/mac/{MAC}/response/register
@@ -368,6 +370,19 @@ async function serveDirectPhoto(pixieId: number, photo: any, responseTopic: stri
 
   const metaObj: any = { title, author };
   if (reqId !== undefined) metaObj.reqId = reqId;
+
+  // If animation and pixie is premium, include animation metadata
+  if (photo.is_animation && photo.animation_frames && photo.animation_fps) {
+    const pixie = await prisma.pixie.findUnique({ where: { id: pixieId } });
+    if (pixie && pixie.tier === 'premium') {
+      metaObj.animation = true;
+      metaObj.animationId = photo.id;
+      metaObj.totalFrames = photo.animation_frames;
+      metaObj.fps = photo.animation_fps;
+    }
+    // free tier: fields omitted → firmware shows first frame as static photo
+  }
+
   const jsonMeta = JSON.stringify(metaObj);
   const jsonBuffer = Buffer.from(jsonMeta + '\n', 'utf-8');
   const finalBuffer = Buffer.concat([jsonBuffer, rgbBuffer]);
@@ -383,7 +398,7 @@ async function serveDirectPhoto(pixieId: number, photo: any, responseTopic: stri
     },
   });
 
-  console.log(`[MQTT:photo] Foto enviada a frame ${pixieId}: "${title}" reqId=${reqId} (${finalBuffer.length} bytes)`);
+  console.log(`[MQTT:photo] ${photo.is_animation ? 'Animation' : 'Photo'} sent to frame ${pixieId}: "${title}" reqId=${reqId} (${finalBuffer.length} bytes)`);
 }
 
 // Helper: serve photo using photo_cursor (playlist-aware)
@@ -581,5 +596,62 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
     console.log(`[MQTT:config] Config enviada a frame ${pixieId}`);
   } catch (err) {
     console.error(`[MQTT:config] Error para frame ${pixieId}:`, err);
+  }
+}
+
+// ============================================================================
+// HANDLER: Animation Frame Request
+// Topic: frame/{id}/request/animation/frame -> frame/{id}/response/animation/frame
+// Response: [frameIndex:u8][totalFrames:u8][2B reserved] + 8192 bytes RGB565
+// ============================================================================
+export async function handleAnimationFrameRequest(
+  pixieId: number,
+  payload: { animationId: number; frame: number }
+): Promise<void> {
+  const responseTopic = `frame/${pixieId}/response/animation/frame`;
+
+  try {
+    const photo = await prisma.photos.findFirst({
+      where: { id: payload.animationId, is_animation: true, deleted_at: null },
+    });
+
+    if (!photo || !photo.photo_url || !photo.animation_frames) {
+      console.log(`[MQTT:anim] Animation ${payload.animationId} not found`);
+      return;
+    }
+
+    const frameIndex = payload.frame;
+    if (frameIndex < 0 || frameIndex >= photo.animation_frames) {
+      console.log(`[MQTT:anim] Frame ${frameIndex} out of range (0-${photo.animation_frames - 1})`);
+      return;
+    }
+
+    // .bin file is same path as .png but with .bin extension
+    const binPath = photo.photo_url.replace(/\.png$/, '.bin');
+
+    const fileStream = await downloadFile(binPath);
+    const chunks: Buffer[] = [];
+    for await (const chunk of fileStream) {
+      chunks.push(chunk);
+    }
+    const binBuffer = Buffer.concat(chunks);
+
+    // Extract the requested frame
+    const offset = frameIndex * FRAME_SIZE_RGB565;
+    const frameData = binBuffer.subarray(offset, offset + FRAME_SIZE_RGB565);
+
+    // Build response: 4-byte header + 8192 bytes frame data
+    const header = Buffer.alloc(4);
+    header[0] = frameIndex;
+    header[1] = photo.animation_frames;
+    header[2] = 0; // reserved
+    header[3] = 0; // reserved
+
+    const responseBuffer = Buffer.concat([header, frameData]);
+    publishBinary(responseTopic, responseBuffer);
+
+    console.log(`[MQTT:anim] Frame ${frameIndex}/${photo.animation_frames} sent to frame ${pixieId} (${responseBuffer.length} bytes)`);
+  } catch (err) {
+    console.error(`[MQTT:anim] Error for frame ${pixieId}:`, err);
   }
 }

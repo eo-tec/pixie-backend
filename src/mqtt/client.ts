@@ -7,7 +7,8 @@ import {
   handlePhotoRequest,
   handleOtaRequest,
   handleConfigRequest,
-  handleRegisterRequest
+  handleRegisterRequest,
+  handleAnimationFrameRequest
 } from './handlers';
 import { createDeviceClient } from './dynSec';
 
@@ -159,7 +160,7 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
   }
 
   const pixieId = parseInt(parts[1], 10);
-  const requestType = parts[3];
+  const requestType = parts.slice(3).join('/'); // e.g. "photo" or "animation/frame"
 
   if (isNaN(pixieId)) {
     console.error(`[MQTT] Invalid pixieId in topic: ${topic}`);
@@ -201,6 +202,15 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
       case 'config':
         await handleConfigRequest(pixieId);
         break;
+
+      case 'animation/frame': {
+        let animPayload: { animationId: number; frame: number } = { animationId: 0, frame: 0 };
+        try {
+          animPayload = JSON.parse(payload.toString());
+        } catch { /* invalid payload */ }
+        await handleAnimationFrameRequest(pixieId, animPayload);
+        break;
+      }
 
       default:
         console.log(`[MQTT] Unknown request type: ${requestType}`);
