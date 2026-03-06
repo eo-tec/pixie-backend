@@ -154,7 +154,32 @@ export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) =>
         photo_url: true,
         username: true,
         title: true,
-        user_id: true
+        user_id: true,
+        users: true,
+        _count: {
+          select: {
+            reactions: true,
+            comments: { where: { deleted_at: null } },
+          },
+        },
+        reactions: {
+          where: { user_id: currentUserId },
+          select: { type: true },
+          take: 1,
+        },
+        comments: {
+          where: { deleted_at: null },
+          orderBy: { created_at: 'desc' },
+          take: 2,
+          select: {
+            id: true,
+            content: true,
+            created_at: true,
+            user: {
+              select: { id: true, username: true, picture: true },
+            },
+          },
+        },
       },
       orderBy: {
         created_at: "desc"
@@ -180,18 +205,8 @@ export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
-    // Format photos to match PhotoResponse type
-    const formattedPhotos = photos.map(photo => ({
-      id: photo.id,
-      photo_url: photo.photo_url || '',
-      created_at: photo.created_at.toISOString(),
-      user_id: photo.user_id?.toString() || '',
-      username: photo.username || '',
-      title: photo.title || ''
-    }));
-
     res.status(200).json({
-      photos: formattedPhotos,
+      photos,
       totalPhotos,
       totalPages: Math.ceil(totalPhotos / pageSize),
       currentPage: page
