@@ -2,10 +2,147 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import sharp from "sharp";
+import ffmpeg from "fluent-ffmpeg";
+import { promises as fs } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { uploadFile } from "../../minio/minio";
 import { publishToMQTT } from "../../mqtt/client";
 import { sanitizeFilename } from "../../utils/string-utils";
 const prisma = new PrismaClient();
+
+const MAX_ANIMATION_FRAMES = 20;
+const ANIMATION_FPS = 5;
+const FRAME_WIDTH = 64;
+const FRAME_HEIGHT = 64;
+const FRAME_SIZE_RGB565 = FRAME_WIDTH * FRAME_HEIGHT * 2; // 8192 bytes
+
+/**
+ * Extract frames from an animated GIF, resize to 64x64, convert to RGB565 binary.
+ * Returns { bin: Buffer (all frames concatenated), frameCount: number, firstFramePng: Buffer }
+ */
+async function extractAnimationFrames(gifBuffer: Buffer): Promise<{
+  bin: Buffer;
+  frameCount: number;
+  firstFramePng: Buffer;
+}> {
+  const metadata = await sharp(gifBuffer, { animated: true }).metadata();
+  const pageHeight = metadata.height!;
+  const width = metadata.width!;
+  const totalPages = metadata.pages || 1;
+  const frameHeight = pageHeight / totalPages;
+  const frameCount = Math.min(totalPages, MAX_ANIMATION_FRAMES);
+
+  // Extract all frames as one tall raw RGBA image
+  const rawBuffer = await sharp(gifBuffer, { animated: true, pages: frameCount })
+    .resize(FRAME_WIDTH, FRAME_HEIGHT * frameCount)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+
+  const bin = Buffer.alloc(frameCount * FRAME_SIZE_RGB565);
+
+  for (let f = 0; f < frameCount; f++) {
+    for (let y = 0; y < FRAME_HEIGHT; y++) {
+      for (let x = 0; x < FRAME_WIDTH; x++) {
+        const srcIdx = ((f * FRAME_HEIGHT + y) * FRAME_WIDTH + x) * 4;
+        let r = rawBuffer[srcIdx];
+        let g = rawBuffer[srcIdx + 1];
+        let b = rawBuffer[srcIdx + 2];
+        const a = rawBuffer[srcIdx + 3];
+        if (a === 0) { r = 255; g = 255; b = 255; }
+
+        const rgb565 = ((b & 0b11111000) << 8) | ((r & 0b11111100) << 3) | (g >> 3);
+        const dstIdx = f * FRAME_SIZE_RGB565 + (y * FRAME_WIDTH + x) * 2;
+        bin[dstIdx] = (rgb565 >> 8) & 0xff;
+        bin[dstIdx + 1] = rgb565 & 0xff;
+      }
+    }
+  }
+
+  // First frame as PNG for preview/photo_pixels
+  const firstFramePng = await sharp(gifBuffer, { animated: false, pages: 1 })
+    .resize(300, 300)
+    .png({ quality: 90 })
+    .toBuffer();
+
+  return { bin, frameCount, firstFramePng };
+}
+
+/**
+ * Extract frames from an MP4 video using ffmpeg, resize to 64x64, convert to RGB565 binary.
+ */
+async function extractVideoFrames(videoBuffer: Buffer): Promise<{
+  bin: Buffer;
+  frameCount: number;
+  firstFramePng: Buffer;
+}> {
+  const tmpDir = await fs.mkdtemp(join(tmpdir(), "frame-video-"));
+  const inputPath = join(tmpDir, "input.mp4");
+  const outputPattern = join(tmpDir, "frame_%03d.png");
+
+  try {
+    await fs.writeFile(inputPath, videoBuffer);
+
+    // Extract frames at 10fps, max 20 frames, resized to 64x64
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions([
+          "-vf", `fps=${ANIMATION_FPS},scale=${FRAME_WIDTH}:${FRAME_HEIGHT}:force_original_aspect_ratio=decrease,pad=${FRAME_WIDTH}:${FRAME_HEIGHT}:(ow-iw)/2:(oh-ih)/2:white`,
+          "-frames:v", String(MAX_ANIMATION_FRAMES),
+        ])
+        .output(outputPattern)
+        .on("end", () => resolve())
+        .on("error", (err: Error) => reject(err))
+        .run();
+    });
+
+    // Read extracted frame files
+    const files = (await fs.readdir(tmpDir))
+      .filter((f) => f.startsWith("frame_") && f.endsWith(".png"))
+      .sort();
+
+    const frameCount = files.length;
+    if (frameCount === 0) throw new Error("No frames extracted from video");
+
+    const bin = Buffer.alloc(frameCount * FRAME_SIZE_RGB565);
+
+    for (let f = 0; f < frameCount; f++) {
+      const framePath = join(tmpDir, files[f]);
+      const rawBuffer = await sharp(framePath)
+        .resize(FRAME_WIDTH, FRAME_HEIGHT)
+        .ensureAlpha()
+        .raw()
+        .toBuffer();
+
+      for (let y = 0; y < FRAME_HEIGHT; y++) {
+        for (let x = 0; x < FRAME_WIDTH; x++) {
+          const srcIdx = (y * FRAME_WIDTH + x) * 4;
+          let r = rawBuffer[srcIdx];
+          let g = rawBuffer[srcIdx + 1];
+          let b = rawBuffer[srcIdx + 2];
+          const a = rawBuffer[srcIdx + 3];
+          if (a === 0) { r = 255; g = 255; b = 255; }
+
+          const rgb565 = ((b & 0b11111000) << 8) | ((r & 0b11111100) << 3) | (g >> 3);
+          const dstIdx = f * FRAME_SIZE_RGB565 + (y * FRAME_WIDTH + x) * 2;
+          bin[dstIdx] = (rgb565 >> 8) & 0xff;
+          bin[dstIdx + 1] = rgb565 & 0xff;
+        }
+      }
+    }
+
+    // First frame as PNG for preview
+    const firstFramePng = await sharp(join(tmpDir, files[0]))
+      .resize(300, 300)
+      .png({ quality: 90 })
+      .toBuffer();
+
+    return { bin, frameCount, firstFramePng };
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+}
 
 async function photoToPixelMatrix(buffer: Buffer) {
   const metadata = await sharp(buffer).metadata();
@@ -193,29 +330,58 @@ export async function postPhoto(req: Request, res: Response) {
     }
 
 
-    // 📌 Convertir la imagen de Base64 a Buffer (eliminar prefijo data:image si existe)
+    // Detect if it's a video from the base64 data URI prefix
+    const isVideo = photoFile.startsWith('data:video/');
+
+    // Convertir la imagen de Base64 a Buffer (eliminar prefijo data: si existe)
     const base64Data = photoFile.includes(',') ? photoFile.split(',')[1] : photoFile;
     const fileBuffer = Buffer.from(base64Data, "base64");
 
-    const processedImage = await sharp(fileBuffer)
-      .rotate() // 🔥 Corrige la rotación automáticamente según EXIF
-      .resize(300, 300) // Opcional: redimensionar
-      .png({ quality: 90 })
-      .toBuffer();
+    // Detect if it's an animated GIF or video
+    let isAnimation = isVideo;
+    if (!isVideo) {
+      const metadata = await sharp(fileBuffer, { animated: true }).metadata();
+      isAnimation = (metadata.format === 'gif' && (metadata.pages || 1) > 1);
+    }
 
-    // 📌 Subir la imagen a Minio
     const sanitizedUsername = sanitizeFilename(user.username);
     const sanitizedTitle = sanitizeFilename(title);
-    const fileNameMinio = `${sanitizedUsername}/${Date.now()}_${sanitizedTitle}.png`;
-    const photoUrlMinio = await uploadFile(
-      processedImage,
-      fileNameMinio,
-      "image/png"
-    );
+    const timestamp = Date.now();
 
+    let processedImage: Buffer;
+    let fileNameMinio: string;
+    let animationFrames: number | null = null;
+    let animationFps: number | null = null;
 
+    if (isAnimation) {
+      const { bin, frameCount, firstFramePng } = isVideo
+        ? await extractVideoFrames(fileBuffer)
+        : await extractAnimationFrames(fileBuffer);
+      processedImage = firstFramePng;
 
-    // 📌 Guardar en la base de datos
+      // Upload the .bin with all frames to Minio
+      const binFileName = `${sanitizedUsername}/${timestamp}_${sanitizedTitle}.bin`;
+      await uploadFile(bin, binFileName, "application/octet-stream");
+
+      // Upload first frame as PNG for preview
+      fileNameMinio = `${sanitizedUsername}/${timestamp}_${sanitizedTitle}.png`;
+      await uploadFile(processedImage, fileNameMinio, "image/png");
+
+      animationFrames = frameCount;
+      animationFps = ANIMATION_FPS;
+      console.log(`[Upload] Animation processed: ${frameCount} frames, bin=${bin.length} bytes`);
+    } else {
+      processedImage = await sharp(fileBuffer)
+        .rotate()
+        .resize(300, 300)
+        .png({ quality: 90 })
+        .toBuffer();
+
+      fileNameMinio = `${sanitizedUsername}/${timestamp}_${sanitizedTitle}.png`;
+      await uploadFile(processedImage, fileNameMinio, "image/png");
+    }
+
+    // Guardar en la base de datos
     const newPhoto = await prisma.photos.create({
       data: {
         user_id: user.id,
@@ -225,6 +391,9 @@ export async function postPhoto(req: Request, res: Response) {
         created_at: new Date(),
         photo_pixels: await photoToPixelMatrix(processedImage),
         is_public: isPublic ?? false,
+        is_animation: isAnimation,
+        animation_frames: animationFrames,
+        animation_fps: animationFps,
       },
       include: {
         users: true,
