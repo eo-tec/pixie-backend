@@ -217,8 +217,10 @@ export async function getPhotosFromUser(
     const friendIds = friends.map(f => f.user_id_1 === id ? f.user_id_2 : f.user_id_1);
 
     // Query con fotos propias, compartidas conmigo, y públicas de amigos
+    // Excluir fotos que el usuario ha ocultado de su timeline
     const whereClause = {
       deleted_at: null,
+      hidden_by: { none: { user_id: id } },
       OR: [
         { user_id: id },                                    // Mis fotos
         { visible_by: { some: { user_id: id } } },          // Compartidas conmigo
@@ -556,6 +558,54 @@ export async function getPhotoVisibility(req: AuthenticatedRequest, res: Respons
   } catch (error) {
     console.error("Error al obtener visibilidad de la foto:", error);
     res.status(500).json({ error: "Error al obtener visibilidad de la foto" });
+  }
+}
+
+export async function hidePhoto(req: AuthenticatedRequest, res: Response) {
+  const id = req.params.id as string;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!id) {
+    res.status(400).json({ error: "Se requiere el id de la foto" });
+    return;
+  }
+
+  try {
+    const photo = await prisma.photos.findFirst({
+      where: {
+        id: parseInt(id),
+        deleted_at: null,
+      },
+    });
+
+    if (!photo) {
+      res.status(404).json({ error: "Foto no encontrada" });
+      return;
+    }
+
+    await prisma.photo_hidden_by_users.upsert({
+      where: {
+        photo_id_user_id: {
+          photo_id: parseInt(id),
+          user_id: userId,
+        },
+      },
+      update: {},
+      create: {
+        photo_id: parseInt(id),
+        user_id: userId,
+      },
+    });
+
+    res.status(200).json({ message: "Foto ocultada del timeline" });
+  } catch (error) {
+    console.error("Error al ocultar la foto:", error);
+    res.status(500).json({ error: "Error al ocultar la foto" });
   }
 }
 

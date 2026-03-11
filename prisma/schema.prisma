@@ -69,6 +69,7 @@ model photos {
   animation_fps     Int?
   photo_groups photo_groups[]
   visible_by   photo_visible_by_users[]
+  hidden_by    photo_hidden_by_users[]
   users        public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reactions    photo_reactions[]
   comments            photo_comments[]
@@ -161,6 +162,7 @@ model public_users {
   group_suscriber         group_suscriber[]
   groups                  groups[]
   visible_photos          photo_visible_by_users[]
+  hidden_photos           photo_hidden_by_users[]
   photos                  photos[]
   pixie                   pixie[]
   received_private_photos private_photos[]         @relation("ReceivedPrivatePhotos")
@@ -210,6 +212,18 @@ model photo_visible_by_users {
 
   @@unique([photo_id, user_id])
   @@map("photo_visible_by_users")
+  @@schema("public")
+}
+
+model photo_hidden_by_users {
+  id         Int          @id @default(autoincrement())
+  photo_id   Int
+  user_id    Int
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  photo      photos       @relation(fields: [photo_id], references: [id], onDelete: Cascade)
+  user       public_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([photo_id, user_id])
   @@schema("public")
 }
 

@@ -1,6 +1,6 @@
 // src/routes/index.ts
 import { Router } from 'express';
-import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility } from '../../controllers/app/photos.controller';
+import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility, hidePhoto } from '../../controllers/app/photos.controller';
 import { verifyAuth, AuthenticatedRequest } from './checkUser';
 import { Request, Response } from 'express';
 import { getUser, getFriends, updateProfile, updateTimezone, deleteAccount } from '../../controllers/app/user.controller';
@@ -28,6 +28,7 @@ privateRouter.post('/post-photo', postPhoto);
 privateRouter.delete('/photo/:id', deletePhoto);
 privateRouter.get('/photo/:id/visibility', getPhotoVisibility);
 privateRouter.put('/photo/:id/visibility', updatePhotoVisibility);
+privateRouter.post('/photo/:id/hide', hidePhoto);
 
 privateRouter.get('/me', getUser);
 privateRouter.put('/me', updateProfile);
