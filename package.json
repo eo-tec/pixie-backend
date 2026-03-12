@@ -6,7 +6,8 @@
     "dev": "set \"NODE_ENV=development\" && ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
     "start": "npm run build && node dist/app.js",
-    "prisma:generate": "npx prisma generate"
+    "prisma:generate": "npx prisma generate",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
@@ -50,6 +51,7 @@
     "@types/node": "^22.13.1",
     "@types/node-telegram-bot-api": "^0.64.7",
     "@types/spotify-web-api-node": "^5.0.11",
+    "husky": "^9.1.7",
     "prisma": "^6.5.0",
     "supabase": "^2.9.6",
     "ts-node-dev": "^2.0.0",
