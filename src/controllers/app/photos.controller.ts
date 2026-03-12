@@ -204,6 +204,16 @@ export async function getPhotosFromUser(
   const skip = (page - 1) * pageSize;
 
   try {
+    // Get IDs of users I've blocked or who have blocked me
+    const blocks = await prisma.user_blocks.findMany({
+      where: {
+        OR: [{ blocker_id: id }, { blocked_id: id }],
+      },
+    });
+    const blockedUserIds = blocks.map((b) =>
+      b.blocker_id === id ? b.blocked_id : b.blocker_id
+    );
+
     // Obtener IDs de amigos aceptados
     const friends = await prisma.friends.findMany({
       where: {
@@ -214,13 +224,18 @@ export async function getPhotosFromUser(
         ]
       }
     });
-    const friendIds = friends.map(f => f.user_id_1 === id ? f.user_id_2 : f.user_id_1);
+    const friendIds = friends
+      .map(f => f.user_id_1 === id ? f.user_id_2 : f.user_id_1)
+      .filter(fId => !blockedUserIds.includes(fId));
 
     // Query con fotos propias, compartidas conmigo, y públicas de amigos
     // Excluir fotos que el usuario ha ocultado de su timeline
+    // Excluir fotos de usuarios bloqueados y fotos flaggeadas
     const whereClause = {
       deleted_at: null,
+      is_flagged: false,
       hidden_by: { none: { user_id: id } },
+      ...(blockedUserIds.length > 0 ? { user_id: { notIn: blockedUserIds } } : {}),
       OR: [
         { user_id: id },                                    // Mis fotos
         { visible_by: { some: { user_id: id } } },          // Compartidas conmigo

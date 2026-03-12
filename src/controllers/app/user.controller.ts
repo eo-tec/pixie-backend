@@ -34,6 +34,7 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
             bio: user.bio,
             spotify_id: user.spotify_credentials ? user.spotify_credentials.spotify_id : null,
             timezone_offset: user.timezone_offset ?? 0,
+            accepted_terms_at: user.accepted_terms_at,
         }
     });
 }
@@ -346,4 +347,24 @@ async function deleteAccount(req: AuthenticatedRequest, res: Response) {
     }
 }
 
-export { getUser, getFriends, updateProfile, updateTimezone, deleteAccount };
+async function acceptTerms(req: AuthenticatedRequest, res: Response) {
+    const id = req.user?.id;
+    if (!id) {
+        res.status(401).json({ error: 'Usuario no autenticado' });
+        return;
+    }
+
+    try {
+        await prisma.public_users.update({
+            where: { id },
+            data: { accepted_terms_at: new Date() },
+        });
+
+        res.status(200).json({ message: 'Términos aceptados' });
+    } catch (error) {
+        console.error('Error accepting terms:', error);
+        res.status(500).json({ error: 'Error al aceptar los términos' });
+    }
+}
+
+export { getUser, getFriends, updateProfile, updateTimezone, deleteAccount, acceptTerms };

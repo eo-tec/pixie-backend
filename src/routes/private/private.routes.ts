@@ -3,7 +3,9 @@ import { Router } from 'express';
 import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility, hidePhoto } from '../../controllers/app/photos.controller';
 import { verifyAuth, AuthenticatedRequest } from './checkUser';
 import { Request, Response } from 'express';
-import { getUser, getFriends, updateProfile, updateTimezone, deleteAccount } from '../../controllers/app/user.controller';
+import { getUser, getFriends, updateProfile, updateTimezone, deleteAccount, acceptTerms } from '../../controllers/app/user.controller';
+import { blockUser, unblockUser, getBlockedUsers } from '../../controllers/app/blocks.controller';
+import { createReport } from '../../controllers/app/reports.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
@@ -34,6 +36,15 @@ privateRouter.get('/me', getUser);
 privateRouter.put('/me', updateProfile);
 privateRouter.delete('/me', deleteAccount);
 privateRouter.patch('/me/timezone', updateTimezone);
+privateRouter.post('/me/accept-terms', acceptTerms);
+
+// Block/unblock users
+privateRouter.post('/user/:id/block', blockUser);
+privateRouter.delete('/user/:id/block', unblockUser);
+privateRouter.get('/user/blocked', getBlockedUsers);
+
+// Reports
+privateRouter.post('/report', createReport);
 //privateRouter.get('/friends', getFriends);
 
 privateRouter.get('/pixie/photo/:id', showPhoto);

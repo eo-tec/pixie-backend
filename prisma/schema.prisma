@@ -67,6 +67,7 @@ model photos {
   is_animation      Boolean                  @default(false)
   animation_frames  Int?
   animation_fps     Int?
+  is_flagged        Boolean                  @default(false)
   photo_groups photo_groups[]
   visible_by   photo_visible_by_users[]
   hidden_by    photo_hidden_by_users[]
@@ -74,6 +75,7 @@ model photos {
   reactions    photo_reactions[]
   comments            photo_comments[]
   currently_on_pixies pixie[]              @relation("CurrentPhoto")
+  reports             content_reports[]
 
   @@schema("public")
 }
@@ -157,6 +159,7 @@ model public_users {
   bio                     String?
   user_id                 String?                  @unique
   timezone_offset         Int?                     @default(0)
+  accepted_terms_at       DateTime?                @db.Timestamptz(6)
   friends_sent            friends[]                @relation("SentFriendships")
   friends_received        friends[]                @relation("ReceivedFriendships")
   group_suscriber         group_suscriber[]
@@ -170,6 +173,10 @@ model public_users {
   spotify_credentials     spotify_credentials?
   photo_reactions         photo_reactions[]
   photo_comments          photo_comments[]
+  blocks_sent             user_blocks[]            @relation("BlocksSent")
+  blocks_received         user_blocks[]            @relation("BlocksReceived")
+  reports_sent            content_reports[]        @relation("ReportsSent")
+  reports_received        content_reports[]        @relation("ReportsReceived")
 
   @@map("users")
   @@schema("public")
@@ -309,6 +316,52 @@ model photo_comments {
   deleted_at DateTime?    @db.Timestamptz(6)
   photo      photos       @relation(fields: [photo_id], references: [id], onDelete: Cascade)
   user       public_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+model user_blocks {
+  id         Int          @id @default(autoincrement())
+  blocker_id Int
+  blocked_id Int
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  blocker    public_users @relation("BlocksSent", fields: [blocker_id], references: [id], onDelete: Cascade)
+  blocked    public_users @relation("BlocksReceived", fields: [blocked_id], references: [id], onDelete: Cascade)
+
+  @@unique([blocker_id, blocked_id])
+  @@schema("public")
+}
+
+model content_reports {
+  id          Int          @id @default(autoincrement())
+  reporter_id Int
+  photo_id    Int?
+  reported_user_id Int?
+  reason      ReportReason
+  description String?      @db.VarChar(500)
+  status      ReportStatus @default(pending)
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+  reviewed_at DateTime?    @db.Timestamptz(6)
+  reporter    public_users @relation("ReportsSent", fields: [reporter_id], references: [id], onDelete: Cascade)
+  reported_user public_users? @relation("ReportsReceived", fields: [reported_user_id], references: [id], onDelete: Cascade)
+  photo       photos?      @relation(fields: [photo_id], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+enum ReportReason {
+  inappropriate
+  spam
+  harassment
+  other
+
+  @@schema("public")
+}
+
+enum ReportStatus {
+  pending
+  reviewed
+  actioned
 
   @@schema("public")
 }

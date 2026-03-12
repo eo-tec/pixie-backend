@@ -27,18 +27,32 @@ export const getFriends = async (req: AuthenticatedRequest, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 20;
   const skip = (page - 1) * limit;
 
+  // Get blocked user IDs to exclude from friends list
+  const blocks = await prisma.user_blocks.findMany({
+    where: { OR: [{ blocker_id: id }, { blocked_id: id }] },
+  });
+  const blockedUserIds = blocks.map((b) =>
+    b.blocker_id === id ? b.blocked_id : b.blocker_id
+  );
+
   const whereClause = {
     OR: [
       {
         AND: [
           { OR: [{ user_id_1: id }, { user_id_2: id }] },
-          { status: FriendStatus.accepted }
+          { status: FriendStatus.accepted },
+          ...(blockedUserIds.length > 0
+            ? [{ user_id_1: { notIn: blockedUserIds } }, { user_id_2: { notIn: blockedUserIds } }]
+            : []),
         ]
       },
       {
         AND: [
           { user_id_2: id },
-          { status: FriendStatus.pending }
+          { status: FriendStatus.pending },
+          ...(blockedUserIds.length > 0
+            ? [{ user_id_1: { notIn: blockedUserIds } }]
+            : []),
         ]
       }
     ]
@@ -154,6 +168,21 @@ export const addFriend = async (req: AuthenticatedRequest, res: Response) => {
     res.status(401).json({ error: "Usuario no autenticado" });
     return;
   }
+
+  // Check if either user has blocked the other
+  const block = await prisma.user_blocks.findFirst({
+    where: {
+      OR: [
+        { blocker_id: req.user.id, blocked_id: parseInt(id) },
+        { blocker_id: parseInt(id), blocked_id: req.user.id },
+      ],
+    },
+  });
+  if (block) {
+    res.status(403).json({ error: "No se puede enviar solicitud de amistad" });
+    return;
+  }
+
   const friend = await prisma.friends.create({
     data: {
       user_id_1: req.user?.id,
