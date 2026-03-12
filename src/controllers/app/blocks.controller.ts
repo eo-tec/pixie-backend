@@ -4,7 +4,7 @@ import prisma from "../../services/prisma";
 
 export async function blockUser(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const blockedId = parseInt(req.params.id);
+  const blockedId = parseInt(req.params.id as string);
 
   if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
@@ -62,7 +62,7 @@ export async function blockUser(req: AuthenticatedRequest, res: Response) {
 
 export async function unblockUser(req: AuthenticatedRequest, res: Response) {
   const userId = req.user?.id;
-  const blockedId = parseInt(req.params.id);
+  const blockedId = parseInt(req.params.id as string);
 
   if (!userId) {
     res.status(401).json({ error: "Usuario no autenticado" });
