@@ -96,7 +96,7 @@ export const getPixie = async (req: AuthenticatedRequest, res: Response) => {
     return;
   }
 
-  const pixieId = parseInt(req.params.id, 10);
+  const pixieId = parseInt(req.params.id as string, 10);
   if (isNaN(pixieId)) {
     res.status(400).json({ error: "ID de pixie inválido" });
     return;
