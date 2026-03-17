@@ -89,6 +89,72 @@ export const getPixies = async (req: AuthenticatedRequest, res: Response) => {
   }
 };
 
+export const getPixie = async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  const pixieId = parseInt(req.params.id, 10);
+  if (isNaN(pixieId)) {
+    res.status(400).json({ error: "ID de pixie inválido" });
+    return;
+  }
+
+  try {
+    const p = await prisma.pixie.findFirst({
+      where: {
+        id: pixieId,
+        created_by: userId,
+      },
+      include: {
+        current_photo: {
+          select: {
+            id: true,
+            title: true,
+            username: true,
+            photo_url: true,
+          },
+        },
+      },
+    });
+
+    if (!p) {
+      res.status(404).json({ error: "Pixie no encontrado" });
+      return;
+    }
+
+    const enrichedPixie = {
+      ...p,
+      is_online: isFrameOnline(p.id),
+      last_seen: getFrameLastSeen(p.id)?.toISOString() ?? null,
+      current_photo: p.current_photo
+        ? {
+            id: p.current_photo.id,
+            title: p.current_photo.title,
+            author: p.current_photo.username,
+            photo_url: p.current_photo.photo_url,
+          }
+        : null,
+      current_song: p.current_song_id
+        ? {
+            id: p.current_song_id,
+            name: p.current_song_name,
+          }
+        : null,
+      current_photo_id: undefined,
+      current_song_id: undefined,
+      current_song_name: undefined,
+    };
+
+    res.status(200).json(enrichedPixie);
+  } catch (error) {
+    console.error("Error al obtener pixie:", error);
+    res.status(500).json({ error: "Error al obtener el pixie" });
+  }
+};
+
 export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
   const pixie : pixie = req.body;
   const userId = req.user?.id;
