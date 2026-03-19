@@ -155,6 +155,8 @@ export const getUserPhotos = async (req: AuthenticatedRequest, res: Response) =>
         username: true,
         title: true,
         user_id: true,
+        is_animation: true,
+        video_url: true,
         users: true,
         _count: {
           select: {

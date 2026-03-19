@@ -259,6 +259,8 @@ export async function getPhotosFromUser(
         title: true,
         user_id: true,
         is_public: true,
+        is_animation: true,
+        video_url: true,
         users: true,
         photo_groups: true,
         _count: {
@@ -369,6 +371,7 @@ export async function postPhoto(req: Request, res: Response) {
     let fileNameMinio: string;
     let animationFrames: number | null = null;
     let animationFps: number | null = null;
+    let videoUrl: string | null = null;
 
     if (isAnimation) {
       const { bin, frameCount, firstFramePng } = isVideo
@@ -383,6 +386,13 @@ export async function postPhoto(req: Request, res: Response) {
       // Upload first frame as PNG for preview
       fileNameMinio = `${sanitizedUsername}/${timestamp}_${sanitizedTitle}.png`;
       await uploadFile(processedImage, fileNameMinio, "image/png");
+
+      // Upload original MP4 for app playback (only for videos, not GIFs)
+      if (isVideo) {
+        const mp4FileName = `${sanitizedUsername}/${timestamp}_${sanitizedTitle}.mp4`;
+        await uploadFile(fileBuffer, mp4FileName, "video/mp4");
+        videoUrl = mp4FileName;
+      }
 
       animationFrames = frameCount;
       animationFps = ANIMATION_FPS;
@@ -411,6 +421,7 @@ export async function postPhoto(req: Request, res: Response) {
         is_animation: isAnimation,
         animation_frames: animationFrames,
         animation_fps: animationFps,
+        video_url: videoUrl,
       },
       include: {
         users: true,

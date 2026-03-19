@@ -68,6 +68,7 @@ model photos {
   animation_frames  Int?
   animation_fps     Int?
   is_flagged        Boolean                  @default(false)
+  video_url         String?
   photo_groups photo_groups[]
   visible_by   photo_visible_by_users[]
   hidden_by    photo_hidden_by_users[]

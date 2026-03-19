@@ -77,9 +77,15 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
   }
 
   try {
-    // Find the photo by its url
+    // Find the photo by its url (photo_url for images/bins, video_url for mp4)
     const photo = await prisma.photos.findFirst({
-      where: { photo_url: filePath, deleted_at: null },
+      where: {
+        deleted_at: null,
+        OR: [
+          { photo_url: filePath },
+          { video_url: filePath },
+        ],
+      },
       select: { id: true, user_id: true, is_public: true },
     });
 
@@ -130,7 +136,7 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
     // Stream the file from Minio
     const stream = await downloadFile(filePath);
     const ext = filePath.split('.').pop()?.toLowerCase();
-    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'mp4' ? 'video/mp4' : 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=86400');
     stream.pipe(res);
