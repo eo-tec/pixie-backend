@@ -88,7 +88,7 @@ async function extractVideoFrames(videoBuffer: Buffer): Promise<{
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
         .outputOptions([
-          "-vf", `fps=${ANIMATION_FPS},scale=${FRAME_WIDTH}:${FRAME_HEIGHT}:force_original_aspect_ratio=decrease,pad=${FRAME_WIDTH}:${FRAME_HEIGHT}:(ow-iw)/2:(oh-ih)/2:white`,
+          "-vf", `fps=${ANIMATION_FPS},crop=min(iw\\,ih):min(iw\\,ih),scale=${FRAME_WIDTH}:${FRAME_HEIGHT}`,
           "-frames:v", String(MAX_ANIMATION_FRAMES),
         ])
         .output(outputPattern)
