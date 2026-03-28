@@ -527,16 +527,18 @@ async function serveDayNightFace(pixieId: number, responseTopic: string, reqId?:
 // Topic: frame/{id}/request/ota -> frame/{id}/response/ota
 // Response: {"version":15,"url":"https://..."}
 // ============================================================================
-export async function handleOtaRequest(pixieId: number): Promise<void> {
+export async function handleOtaRequest(pixieId: number, hwVersion?: string): Promise<void> {
   const responseTopic = `frame/${pixieId}/response/ota`;
+  const hw = hwVersion || "v1";
 
   try {
     const version = await prisma.code_versions.findFirst({
+      where: { hw_version: hw },
       orderBy: { created_at: 'desc' }
     });
 
     if (!version) {
-      console.log(`[MQTT:ota] No hay versiones disponibles`);
+      console.log(`[MQTT:ota] No hay versiones disponibles para hw ${hw}`);
       return;
     }
 
@@ -547,7 +549,7 @@ export async function handleOtaRequest(pixieId: number): Promise<void> {
       url: url
     });
 
-    console.log(`[MQTT:ota] Versión ${version.version} enviada a frame ${pixieId}`);
+    console.log(`[MQTT:ota] Versión ${version.version} (hw ${hw}) enviada a frame ${pixieId}`);
   } catch (err) {
     console.error(`[MQTT:ota] Error para frame ${pixieId}:`, err);
   }

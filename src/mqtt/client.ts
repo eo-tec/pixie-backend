@@ -195,9 +195,14 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
         break;
       }
 
-      case 'ota':
-        await handleOtaRequest(pixieId);
+      case 'ota': {
+        let otaPayload: { hw_version?: string } = {};
+        try {
+          otaPayload = JSON.parse(payload.toString());
+        } catch { /* payload vacío o inválido */ }
+        await handleOtaRequest(pixieId, otaPayload.hw_version);
         break;
+      }
 
       case 'config':
         await handleConfigRequest(pixieId);

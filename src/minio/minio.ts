@@ -107,8 +107,8 @@ export const getPresignedUrl = async (fileName: string) => {
 
 // HTTP-only URL for firmware downloads (ESP32 lacks heap for TLS handshake)
 const arduinoPublicUrl = process.env.MINIO_ARDUINO_URL || "bucketarduino.frame64.fun";
-export const getPresignedUrlBin = async (fileName: string) => {
-  return `http://${arduinoPublicUrl}/versions/${fileName}`;
+export const getPresignedUrlBin = async (filePath: string) => {
+  return `http://${arduinoPublicUrl}/versions/${filePath}`;
 };
 
 export default minioClient;
