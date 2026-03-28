@@ -14,9 +14,11 @@ model code_versions {
   id         Int      @id @default(autoincrement())
   created_at DateTime @default(now()) @db.Timestamptz(6)
   version    Int      @db.SmallInt
+  hw_version String   @default("v1")
   url        String
   comments   String?
 
+  @@index([hw_version, version])
   @@schema("public")
 }
 
