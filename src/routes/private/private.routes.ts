@@ -14,7 +14,7 @@ import { pixiesRouter } from './pixies.routes';
 import { reactionsRouter } from './reactions.routes';
 import { commentsRouter } from './comments.routes';
 import { playlistRouter } from './playlist.routes';
-import { downloadFile } from '../../minio/minio';
+import { downloadFile, statFile, getPartialFile } from '../../minio/minio';
 import prisma from '../../services/prisma';
 
 export const privateRouter = Router();
@@ -133,13 +133,34 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
       }
     }
 
-    // Stream the file from Minio
-    const stream = await downloadFile(filePath);
+    // Stream the file from Minio with byte-range support (needed for video playback)
+    const stat = await statFile(filePath);
+    const totalSize = stat.size;
     const ext = filePath.split('.').pop()?.toLowerCase();
-    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'mp4' ? 'video/mp4' : 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    stream.pipe(res);
+    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'mp4' ? 'video/mp4' : ext === 'webm' ? 'video/webm' : 'application/octet-stream';
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+      const chunkSize = end - start + 1;
+
+      const stream = await getPartialFile(filePath, start, chunkSize);
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Length', chunkSize);
+      res.setHeader('Content-Type', contentType);
+      stream.pipe(res);
+    } else {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', totalSize);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      const stream = await downloadFile(filePath);
+      stream.pipe(res);
+    }
   } catch (err) {
     res.status(404).send('File not found');
   }

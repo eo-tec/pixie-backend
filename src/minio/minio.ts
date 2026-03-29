@@ -71,6 +71,22 @@ export const downloadFile = async (fileName: string) => {
   return fileStream;
 };
 
+export const statFile = async (fileName: string) => {
+  return await minioClient.statObject(
+    process.env.MINIO_BUCKET || "photos",
+    fileName
+  );
+};
+
+export const getPartialFile = async (fileName: string, offset: number, length: number) => {
+  return await minioClient.getPartialObject(
+    process.env.MINIO_BUCKET || "photos",
+    fileName,
+    offset,
+    length
+  );
+};
+
 export const checkFile = async (fileName: string) => {
   try{
     const fileExists = await minioClient.statObject(
