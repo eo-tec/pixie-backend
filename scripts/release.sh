@@ -9,8 +9,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_ROOT="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$BACKEND_ROOT/../Spotipyx"
-BUILD_DIR="$PROJECT_ROOT/.pio/build/release"
-FIRMWARE_BIN="$BUILD_DIR/firmware.bin"
 
 # Colores para output
 RED='\033[0;31m'
@@ -19,13 +17,29 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# No cleanup needed — release/debug are separate PlatformIO environments
-
 echo ""
 echo -e "${BLUE}========================================"
 echo "   Spotipyx Firmware Release Script"
 echo -e "========================================${NC}"
 echo ""
+
+# --- PASO 0: Seleccionar hardware version ---
+
+echo -e "${BLUE}[0/7] Seleccionar hardware version${NC}"
+echo "  Versiones disponibles:"
+echo "    1) v1 (ESP32 original)"
+echo "    2) v2 (ESP32-S3)"
+read -p "  Selecciona (1/2) [1]: " -n 1 -r HW_CHOICE
+echo
+case "$HW_CHOICE" in
+    2) HW_VERSION="v2"; PIO_ENV="release-v2" ;;
+    *) HW_VERSION="v1"; PIO_ENV="release" ;;
+esac
+echo -e "  Hardware: ${GREEN}$HW_VERSION${NC} (PlatformIO env: $PIO_ENV)"
+echo ""
+
+BUILD_DIR="$PROJECT_ROOT/.pio/build/$PIO_ENV"
+FIRMWARE_BIN="$BUILD_DIR/firmware.bin"
 
 # Verificar que el proyecto Spotipyx existe
 if [ ! -d "$PROJECT_ROOT" ]; then
@@ -70,16 +84,16 @@ echo ""
 
 # --- PASO 2: Obtener version actual ---
 
-echo -e "${BLUE}[2/7] Obteniendo version actual...${NC}"
+echo -e "${BLUE}[2/7] Obteniendo version actual para $HW_VERSION...${NC}"
 cd "$BACKEND_ROOT"
-CURRENT_VERSION=$(npx ts-node scripts/release-helper.ts get-version 2>/dev/null | tail -1)
+CURRENT_VERSION=$(npx ts-node scripts/release-helper.ts get-version --hw "$HW_VERSION" 2>/dev/null | tail -1)
 if [ -z "$CURRENT_VERSION" ] || ! [[ "$CURRENT_VERSION" =~ ^[0-9]+$ ]]; then
     echo -e "${RED}ERROR: No se pudo obtener la version actual${NC}"
     echo "  Valor obtenido: '$CURRENT_VERSION'"
     exit 1
 fi
 NEXT_VERSION=$((CURRENT_VERSION + 1))
-echo -e "  Version actual: ${YELLOW}v$CURRENT_VERSION${NC}"
+echo -e "  Version actual ($HW_VERSION): ${YELLOW}v$CURRENT_VERSION${NC}"
 echo -e "  Siguiente version: ${GREEN}v$NEXT_VERSION${NC}"
 echo ""
 
@@ -95,7 +109,9 @@ echo ""
 echo -e "${BLUE}========================================"
 echo "   RESUMEN DEL RELEASE"
 echo -e "========================================${NC}"
+echo -e "  Hardware:     ${GREEN}$HW_VERSION${NC}"
 echo -e "  Version:      ${GREEN}v$NEXT_VERSION${NC}"
+echo -e "  PIO env:      $PIO_ENV"
 echo -e "  Rama:         $CURRENT_BRANCH"
 echo -e "  Comentarios:  ${COMMENTS:-'(sin comentarios)'}"
 echo -e "${BLUE}========================================${NC}"
@@ -108,11 +124,11 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 echo ""
 
-# --- PASO 4: Compilar firmware (release environment) ---
+# --- PASO 5: Compilar firmware ---
 
-echo -e "${BLUE}[4/7] Compilando firmware (release)...${NC}"
+echo -e "${BLUE}[4/7] Compilando firmware ($PIO_ENV)...${NC}"
 cd "$PROJECT_ROOT"
-if ! pio run -e release; then
+if ! pio run -e "$PIO_ENV"; then
     echo -e "${RED}ERROR: Fallo la compilacion${NC}"
     exit 1
 fi
@@ -132,6 +148,7 @@ FIRMWARE_FILENAME="firmware_v${NEXT_VERSION}.bin"
 
 cd "$BACKEND_ROOT"
 if ! npx ts-node scripts/release-helper.ts upload \
+    --hw "$HW_VERSION" \
     --version "$NEXT_VERSION" \
     --file "$FIRMWARE_BIN" \
     --filename "$FIRMWARE_FILENAME" \
@@ -152,7 +169,7 @@ for PART_FILE in "$BOOTLOADER_BIN:bootloader.bin" "$PARTITIONS_BIN:partitions.bi
     SRC="${PART_FILE%%:*}"
     DST="${PART_FILE##*:}"
     if [ -f "$SRC" ]; then
-        if npx ts-node scripts/release-helper.ts upload-part --file "$SRC" --filename "$DST"; then
+        if npx ts-node scripts/release-helper.ts upload-part --hw "$HW_VERSION" --file "$SRC" --filename "$DST"; then
             echo -e "  ${GREEN}$DST subido${NC}"
         else
             echo -e "  ${YELLOW}ADVERTENCIA: No se pudo subir $DST${NC}"
@@ -166,8 +183,8 @@ echo ""
 # --- PASO 6: Crear tag git ---
 echo -e "${BLUE}[6/7] Creando tag git...${NC}"
 cd "$PROJECT_ROOT"
-TAG_NAME="v$NEXT_VERSION"
-TAG_MESSAGE="${COMMENTS:-Firmware release v$NEXT_VERSION}"
+TAG_NAME="${HW_VERSION}-v${NEXT_VERSION}"
+TAG_MESSAGE="${COMMENTS:-Firmware release $HW_VERSION v$NEXT_VERSION}"
 
 git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
 echo -e "  ${GREEN}Tag $TAG_NAME creado${NC}"
@@ -184,10 +201,11 @@ fi
 
 echo ""
 echo -e "${GREEN}========================================"
-echo "   RELEASE v$NEXT_VERSION COMPLETADO"
+echo "   RELEASE $HW_VERSION v$NEXT_VERSION COMPLETADO"
 echo -e "========================================${NC}"
-echo -e "  Firmware:  $FIRMWARE_FILENAME"
+echo -e "  Hardware:  $HW_VERSION"
+echo -e "  Firmware:  $HW_VERSION/$FIRMWARE_FILENAME"
 echo -e "  Tag:       $TAG_NAME"
-echo -e "  Bucket:    versions"
+echo -e "  Bucket:    versions/$HW_VERSION/"
 echo -e "${GREEN}========================================${NC}"
 echo ""

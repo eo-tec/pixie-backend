@@ -14,8 +14,9 @@ import * as fs from 'fs';
 
 const VERSIONS_BUCKET = 'versions';
 
-async function getLatestVersion(): Promise<number> {
+async function getLatestVersion(hwVersion: string): Promise<number> {
   const latest = await prisma.code_versions.findFirst({
+    where: { hw_version: hwVersion },
     orderBy: { version: 'desc' },
     select: { version: true },
   });
@@ -34,6 +35,7 @@ async function uploadFirmware(
   filePath: string,
   filename: string,
   version: number,
+  hwVersion: string,
   comments?: string
 ): Promise<void> {
   // Verificar que el archivo existe
@@ -48,11 +50,12 @@ async function uploadFirmware(
   const fileBuffer = fs.readFileSync(filePath);
   const fileSize = fs.statSync(filePath).size;
 
-  // Subir a MinIO
-  console.log(`Subiendo ${filename} a bucket '${VERSIONS_BUCKET}'...`);
+  // Subir a MinIO (dentro de subcarpeta hw_version)
+  const minioPath = `${hwVersion}/${filename}`;
+  console.log(`Subiendo ${minioPath} a bucket '${VERSIONS_BUCKET}'...`);
   await minioClient.putObject(
     VERSIONS_BUCKET,
-    filename,
+    minioPath,
     fileBuffer,
     fileSize,
     { 'Content-Type': 'application/octet-stream' }
@@ -64,14 +67,15 @@ async function uploadFirmware(
   await prisma.code_versions.create({
     data: {
       version: version,
-      url: filename,
+      hw_version: hwVersion,
+      url: minioPath,
       comments: comments || null,
     },
   });
   console.log('Version registrada correctamente');
 }
 
-async function uploadPart(filePath: string, filename: string): Promise<void> {
+async function uploadPart(filePath: string, filename: string, hwVersion: string): Promise<void> {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Archivo no encontrado: ${filePath}`);
   }
@@ -81,15 +85,16 @@ async function uploadPart(filePath: string, filename: string): Promise<void> {
   const fileBuffer = fs.readFileSync(filePath);
   const fileSize = fs.statSync(filePath).size;
 
-  console.log(`Subiendo ${filename} a bucket '${VERSIONS_BUCKET}'...`);
+  const minioPath = `${hwVersion}/${filename}`;
+  console.log(`Subiendo ${minioPath} a bucket '${VERSIONS_BUCKET}'...`);
   await minioClient.putObject(
     VERSIONS_BUCKET,
-    filename,
+    minioPath,
     fileBuffer,
     fileSize,
     { 'Content-Type': 'application/octet-stream' }
   );
-  console.log(`Upload de ${filename} completado`);
+  console.log(`Upload de ${minioPath} completado`);
 }
 
 // CLI
@@ -98,9 +103,13 @@ async function main() {
   const command = args[0];
 
   try {
+    // Parsear --hw (comun a todos los comandos)
+    const hwIdx = args.indexOf('--hw');
+    const hw = hwIdx !== -1 ? args[hwIdx + 1] : 'v1';
+
     switch (command) {
       case 'get-version': {
-        const version = await getLatestVersion();
+        const version = await getLatestVersion(hw);
         console.log(version);
         break;
       }
@@ -112,7 +121,7 @@ async function main() {
         const commentsIdx = args.indexOf('--comments');
 
         if (versionIdx === -1 || fileIdx === -1 || filenameIdx === -1) {
-          console.error('Uso: upload --version N --file PATH --filename NAME [--comments TEXT]');
+          console.error('Uso: upload --hw v1 --version N --file PATH --filename NAME [--comments TEXT]');
           process.exit(1);
         }
 
@@ -121,7 +130,7 @@ async function main() {
         const filename = args[filenameIdx + 1];
         const comments = commentsIdx !== -1 ? args.slice(commentsIdx + 1).join(' ') : undefined;
 
-        await uploadFirmware(file, filename, v, comments);
+        await uploadFirmware(file, filename, v, hw, comments);
         break;
       }
 
@@ -130,23 +139,23 @@ async function main() {
         const filenameIdx = args.indexOf('--filename');
 
         if (fileIdx === -1 || filenameIdx === -1) {
-          console.error('Uso: upload-part --file PATH --filename NAME');
+          console.error('Uso: upload-part --hw v1 --file PATH --filename NAME');
           process.exit(1);
         }
 
         const file = args[fileIdx + 1];
         const filename = args[filenameIdx + 1];
 
-        await uploadPart(file, filename);
+        await uploadPart(file, filename, hw);
         break;
       }
 
       default:
         console.log('Release Helper - Comandos disponibles:');
-        console.log('  get-version                    Obtiene la ultima version');
-        console.log('  upload --version N --file PATH --filename NAME [--comments TEXT]');
+        console.log('  get-version --hw v1            Obtiene la ultima version para un hardware');
+        console.log('  upload --hw v1 --version N --file PATH --filename NAME [--comments TEXT]');
         console.log('                                 Sube firmware y registra version');
-        console.log('  upload-part --file PATH --filename NAME');
+        console.log('  upload-part --hw v1 --file PATH --filename NAME');
         console.log('                                 Sube un fichero al bucket sin registrar version');
     }
   } catch (error) {
