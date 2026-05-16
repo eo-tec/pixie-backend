@@ -24,9 +24,26 @@ const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
 //   findFirst on every frame request
 type AnimMeta = { photoUrl: string; frames: number };
 const ANIM_CACHE_TTL_MS = 60_000;
+// LRU caps: caches grow until they hit the max, then the least-recently-used
+// entry is evicted on insert. animBinCache at 100 × ~144 KB = ~14 MB peak.
+const ANIM_BIN_CACHE_MAX = 100;
+const ANIM_META_CACHE_MAX = 1000;
 const animBinCache = new Map<number, { buffer: Buffer; expires: number }>();
 const animBinInflight = new Map<number, Promise<Buffer>>();
 const animMetaCache = new Map<number, { meta: AnimMeta | null; expires: number }>();
+
+// Map preserves insertion order; deleting + re-setting bumps a key to the end.
+function lruTouch<V>(map: Map<number, V>, key: number, value: V): void {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+}
+function lruEvict<V>(map: Map<number, V>, max: number): void {
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -40,7 +57,10 @@ setInterval(() => {
 
 async function getAnimMeta(animationId: number): Promise<AnimMeta | null> {
   const cached = animMetaCache.get(animationId);
-  if (cached && cached.expires > Date.now()) return cached.meta;
+  if (cached && cached.expires > Date.now()) {
+    lruTouch(animMetaCache, animationId, cached);
+    return cached.meta;
+  }
 
   const photo = await prisma.photos.findFirst({
     where: { id: animationId, is_animation: true, deleted_at: null },
@@ -49,13 +69,17 @@ async function getAnimMeta(animationId: number): Promise<AnimMeta | null> {
     photo && photo.photo_url && photo.animation_frames
       ? { photoUrl: photo.photo_url, frames: photo.animation_frames }
       : null;
-  animMetaCache.set(animationId, { meta, expires: Date.now() + ANIM_CACHE_TTL_MS });
+  lruTouch(animMetaCache, animationId, { meta, expires: Date.now() + ANIM_CACHE_TTL_MS });
+  lruEvict(animMetaCache, ANIM_META_CACHE_MAX);
   return meta;
 }
 
 async function getAnimBin(animationId: number, binPath: string): Promise<Buffer> {
   const cached = animBinCache.get(animationId);
-  if (cached && cached.expires > Date.now()) return cached.buffer;
+  if (cached && cached.expires > Date.now()) {
+    lruTouch(animBinCache, animationId, cached);
+    return cached.buffer;
+  }
 
   let inflight = animBinInflight.get(animationId);
   if (!inflight) {
@@ -64,7 +88,8 @@ async function getAnimBin(animationId: number, binPath: string): Promise<Buffer>
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(chunk);
       const buffer = Buffer.concat(chunks);
-      animBinCache.set(animationId, { buffer, expires: Date.now() + ANIM_CACHE_TTL_MS });
+      lruTouch(animBinCache, animationId, { buffer, expires: Date.now() + ANIM_CACHE_TTL_MS });
+      lruEvict(animBinCache, ANIM_BIN_CACHE_MAX);
       return buffer;
     })().finally(() => animBinInflight.delete(animationId));
     animBinInflight.set(animationId, inflight);
