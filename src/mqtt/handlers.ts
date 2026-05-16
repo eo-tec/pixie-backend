@@ -15,6 +15,18 @@ import { effectiveBoolean, effectivePhotos } from '../config/tierConfig';
 
 const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
 
+// In-memory cache of animation .bin files keyed by animationId.
+// Eliminates redundant Minio downloads when the firmware pipelines N frame requests.
+const ANIM_CACHE_TTL_MS = 60_000;
+const animBinCache = new Map<number, { buffer: Buffer; expires: number }>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of animBinCache) {
+    if (entry.expires <= now) animBinCache.delete(id);
+  }
+}, 30_000).unref();
+
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
 // Topic: frame/mac/{MAC}/request/register -> frame/mac/{MAC}/response/register
@@ -631,12 +643,22 @@ export async function handleAnimationFrameRequest(
     // .bin file is same path as .png but with .bin extension
     const binPath = photo.photo_url.replace(/\.png$/, '.bin');
 
-    const fileStream = await downloadFile(binPath);
-    const chunks: Buffer[] = [];
-    for await (const chunk of fileStream) {
-      chunks.push(chunk);
+    let binBuffer: Buffer;
+    const cached = animBinCache.get(payload.animationId);
+    if (cached && cached.expires > Date.now()) {
+      binBuffer = cached.buffer;
+    } else {
+      const fileStream = await downloadFile(binPath);
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      binBuffer = Buffer.concat(chunks);
+      animBinCache.set(payload.animationId, {
+        buffer: binBuffer,
+        expires: Date.now() + ANIM_CACHE_TTL_MS,
+      });
     }
-    const binBuffer = Buffer.concat(chunks);
 
     // Extract the requested frame
     const offset = frameIndex * FRAME_SIZE_RGB565;
