@@ -15,17 +15,62 @@ import { effectiveBoolean, effectivePhotos } from '../config/tierConfig';
 
 const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
 
-// In-memory cache of animation .bin files keyed by animationId.
-// Eliminates redundant Minio downloads when the firmware pipelines N frame requests.
+// In-memory caches for animation requests.
+// - animBinCache: full .bin buffer keyed by animationId
+// - animBinInflight: coalesces concurrent cache misses so a single Minio download
+//   serves N parallel requests (avoids thundering herd when many frames pipeline
+//   their first request at once)
+// - animMetaCache: photo row (photo_url + animation_frames) to skip the prisma
+//   findFirst on every frame request
+type AnimMeta = { photoUrl: string; frames: number };
 const ANIM_CACHE_TTL_MS = 60_000;
 const animBinCache = new Map<number, { buffer: Buffer; expires: number }>();
+const animBinInflight = new Map<number, Promise<Buffer>>();
+const animMetaCache = new Map<number, { meta: AnimMeta | null; expires: number }>();
 
 setInterval(() => {
   const now = Date.now();
   for (const [id, entry] of animBinCache) {
     if (entry.expires <= now) animBinCache.delete(id);
   }
+  for (const [id, entry] of animMetaCache) {
+    if (entry.expires <= now) animMetaCache.delete(id);
+  }
 }, 30_000).unref();
+
+async function getAnimMeta(animationId: number): Promise<AnimMeta | null> {
+  const cached = animMetaCache.get(animationId);
+  if (cached && cached.expires > Date.now()) return cached.meta;
+
+  const photo = await prisma.photos.findFirst({
+    where: { id: animationId, is_animation: true, deleted_at: null },
+  });
+  const meta: AnimMeta | null =
+    photo && photo.photo_url && photo.animation_frames
+      ? { photoUrl: photo.photo_url, frames: photo.animation_frames }
+      : null;
+  animMetaCache.set(animationId, { meta, expires: Date.now() + ANIM_CACHE_TTL_MS });
+  return meta;
+}
+
+async function getAnimBin(animationId: number, binPath: string): Promise<Buffer> {
+  const cached = animBinCache.get(animationId);
+  if (cached && cached.expires > Date.now()) return cached.buffer;
+
+  let inflight = animBinInflight.get(animationId);
+  if (!inflight) {
+    inflight = (async () => {
+      const stream = await downloadFile(binPath);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      const buffer = Buffer.concat(chunks);
+      animBinCache.set(animationId, { buffer, expires: Date.now() + ANIM_CACHE_TTL_MS });
+      return buffer;
+    })().finally(() => animBinInflight.delete(animationId));
+    animBinInflight.set(animationId, inflight);
+  }
+  return inflight;
+}
 
 // ============================================================================
 // HANDLER: Register Request (via MQTT)
@@ -625,40 +670,20 @@ export async function handleAnimationFrameRequest(
   const responseTopic = `frame/${pixieId}/response/animation/frame`;
 
   try {
-    const photo = await prisma.photos.findFirst({
-      where: { id: payload.animationId, is_animation: true, deleted_at: null },
-    });
-
-    if (!photo || !photo.photo_url || !photo.animation_frames) {
+    const meta = await getAnimMeta(payload.animationId);
+    if (!meta) {
       console.log(`[MQTT:anim] Animation ${payload.animationId} not found`);
       return;
     }
 
     const frameIndex = payload.frame;
-    if (frameIndex < 0 || frameIndex >= photo.animation_frames) {
-      console.log(`[MQTT:anim] Frame ${frameIndex} out of range (0-${photo.animation_frames - 1})`);
+    if (frameIndex < 0 || frameIndex >= meta.frames) {
+      console.log(`[MQTT:anim] Frame ${frameIndex} out of range (0-${meta.frames - 1})`);
       return;
     }
 
-    // .bin file is same path as .png but with .bin extension
-    const binPath = photo.photo_url.replace(/\.png$/, '.bin');
-
-    let binBuffer: Buffer;
-    const cached = animBinCache.get(payload.animationId);
-    if (cached && cached.expires > Date.now()) {
-      binBuffer = cached.buffer;
-    } else {
-      const fileStream = await downloadFile(binPath);
-      const chunks: Buffer[] = [];
-      for await (const chunk of fileStream) {
-        chunks.push(chunk);
-      }
-      binBuffer = Buffer.concat(chunks);
-      animBinCache.set(payload.animationId, {
-        buffer: binBuffer,
-        expires: Date.now() + ANIM_CACHE_TTL_MS,
-      });
-    }
+    const binPath = meta.photoUrl.replace(/\.png$/, '.bin');
+    const binBuffer = await getAnimBin(payload.animationId, binPath);
 
     // Extract the requested frame
     const offset = frameIndex * FRAME_SIZE_RGB565;
@@ -667,14 +692,14 @@ export async function handleAnimationFrameRequest(
     // Build response: 4-byte header + 8192 bytes frame data
     const header = Buffer.alloc(4);
     header[0] = frameIndex;
-    header[1] = photo.animation_frames;
+    header[1] = meta.frames;
     header[2] = 0; // reserved
     header[3] = 0; // reserved
 
     const responseBuffer = Buffer.concat([header, frameData]);
     publishBinary(responseTopic, responseBuffer);
 
-    console.log(`[MQTT:anim] Frame ${frameIndex}/${photo.animation_frames} sent to frame ${pixieId} (${responseBuffer.length} bytes)`);
+    console.log(`[MQTT:anim] Frame ${frameIndex}/${meta.frames} sent to frame ${pixieId} (${responseBuffer.length} bytes)`);
   } catch (err) {
     console.error(`[MQTT:anim] Error for frame ${pixieId}:`, err);
   }
