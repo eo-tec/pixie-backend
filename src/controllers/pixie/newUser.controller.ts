@@ -12,7 +12,7 @@ export const checkUsername = async (req: Request, res: Response) => {
   try {
     const cleaned = cleanUsername(username as string);
     const existing = await prisma.public_users.findFirst({
-      where: { username: cleaned },
+      where: { username: { equals: cleaned, mode: "insensitive" } },
     });
     res.json({ available: !existing, username: cleaned });
   } catch (error) {
@@ -43,7 +43,7 @@ export const newUser = async (req: Request, res: Response) => {
       }
     
       const userName = await prisma.public_users.findFirst({
-        where: { username: cleanedUsername }
+        where: { username: { equals: cleanedUsername, mode: "insensitive" } }
       });
     
       if (userName) {

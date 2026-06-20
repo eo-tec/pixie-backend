@@ -148,8 +148,10 @@ interface UpdateProfileRequest {
     picture?: string; // base64 encoded image
 }
 
+// Preserve the case the user typed; only trim and strip disallowed characters.
+// Uniqueness is enforced case-insensitively at query time.
 function cleanUsername(username: string): string {
-    return username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    return username.trim().replace(/[^a-zA-Z0-9_]/g, '');
 }
 
 async function updateProfile(req: AuthenticatedRequest, res: Response) {
@@ -176,10 +178,10 @@ async function updateProfile(req: AuthenticatedRequest, res: Response) {
                 return;
             }
 
-            // Check if username is taken by another user
+            // Check if username is taken by another user (case-insensitive)
             const existingUser = await prisma.public_users.findFirst({
                 where: {
-                    username: cleanedUsername,
+                    username: { equals: cleanedUsername, mode: 'insensitive' },
                     id: { not: id }
                 }
             });
