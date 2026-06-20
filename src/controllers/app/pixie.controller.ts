@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT, isFrameOnline, getFrameLastSeen } from '../../mqtt/client';
-import { pixie } from "@prisma/client";
+import { pixie, FriendStatus } from "@prisma/client";
 import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
 
 // Endpoint para verificar si un frame está registrado (usado durante provisioning BLE)
@@ -532,8 +532,26 @@ export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    // TODO: Verificar que son amigos antes de permitir ver los pixies
-    // Por ahora lo dejamos sin validación de amistad
+    // Solo el propio dueño o un amigo aceptado puede ver/dibujar sus frames.
+    if (targetUser.id !== requesterId) {
+      const friendship = await prisma.friends.findFirst({
+        where: {
+          status: FriendStatus.accepted,
+          OR: [
+            { user_id_1: requesterId, user_id_2: targetUser.id },
+            { user_id_1: targetUser.id, user_id_2: requesterId },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (!friendship) {
+        // Endpoint de descubrimiento: sin amistad no se revela nada. Lista vacía
+        // (no 403) para no romper el patrón de React Query del cliente.
+        res.status(200).json({ pixies: [] });
+        return;
+      }
+    }
 
     // Obtener pixies del usuario que permiten dibujo (allow_draws).
     // Nota: el requisito de tier 'premium' se ha quitado a propósito; se irá

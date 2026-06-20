@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, FriendStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -11,21 +11,53 @@ interface SaveDrawingData {
 
 export class DrawingService {
   
-  async checkUserPermission(userId: string, deviceId: number): Promise<boolean> {
+  /**
+   * Permiso de dibujo reutilizable (HTTP y WebSocket).
+   * Permite si el solicitante es el DUEÑO del pixie, o si es AMIGO aceptado
+   * del dueño y el pixie tiene allow_draws=true. Devuelve false si el pixie
+   * no existe. (El requisito de tier premium se ha quitado a propósito.)
+   */
+  async canDrawOnPixie(userId: number, deviceId: number): Promise<boolean> {
     try {
-      // Check if the user owns the device
-      const pixie = await prisma.pixie.findFirst({
-        where: {
-          id: deviceId,
-          created_by: parseInt(userId)
-        }
+      const pixie = await prisma.pixie.findUnique({
+        where: { id: deviceId },
+        select: { created_by: true, allow_draws: true }
       });
 
-      return !!pixie;
+      // Pixie inexistente o sin dueño -> denegar
+      if (!pixie || pixie.created_by === null) return false;
+
+      // Dueño: siempre puede (independiente de allow_draws)
+      if (pixie.created_by === userId) return true;
+
+      // Amigo aceptado + frame con allow_draws habilitado
+      if (pixie.allow_draws) {
+        const ownerId = pixie.created_by;
+        const friendship = await prisma.friends.findFirst({
+          where: {
+            status: FriendStatus.accepted,
+            OR: [
+              { user_id_1: userId, user_id_2: ownerId },
+              { user_id_1: ownerId, user_id_2: userId }
+            ]
+          },
+          select: { id: true }
+        });
+        return !!friendship;
+      }
+
+      return false;
     } catch (error) {
-      console.error('Error checking user permission:', error);
+      console.error('Error checking draw permission:', error);
       return false;
     }
+  }
+
+  // Conserva la firma string usada por los 6 endpoints HTTP del controller.
+  async checkUserPermission(userId: string, deviceId: number): Promise<boolean> {
+    const parsed = parseInt(userId, 10);
+    if (Number.isNaN(parsed)) return false;
+    return this.canDrawOnPixie(parsed, deviceId);
   }
 
   async getCurrentDrawingState(deviceId: number): Promise<string[][] | null> {

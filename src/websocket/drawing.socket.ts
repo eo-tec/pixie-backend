@@ -4,9 +4,38 @@ import prisma from '../services/prisma';
 import { publishDrawingCommand, exitDrawingMode } from '../mqtt/drawing.mqtt';
 import { DrawingCommand, DrawingSession } from '../types/drawing.types';
 import { rateLimiter } from '../utils/rate-limiter';
+import { DrawingService } from '../services/drawing.service';
 
 // Store active drawing sessions
 const activeSessions = new Map<number, DrawingSession>();
+const drawingService = new DrawingService();
+
+// Cache de autorización por socket con TTL corto. Evita una consulta a BD por
+// cada trazo, pero acota la ventana en la que un permiso ya revocado (amistad
+// deshecha, allow_draws=false, unlink del frame) seguiría siendo válido.
+const AUTH_TTL_MS = 30 * 1000;
+
+async function ensureAuthorized(
+  socket: Socket,
+  deviceId: number,
+  forceRevalidate = false
+): Promise<boolean> {
+  if (!socket.data.authorizedDevices) {
+    socket.data.authorizedDevices = new Map<number, number>();
+  }
+  const cache: Map<number, number> = socket.data.authorizedDevices;
+  const expiresAt = cache.get(deviceId);
+  if (!forceRevalidate && expiresAt !== undefined && Date.now() < expiresAt) {
+    return true;
+  }
+  const allowed = await drawingService.canDrawOnPixie(socket.data.user.id, deviceId);
+  if (allowed) {
+    cache.set(deviceId, Date.now() + AUTH_TTL_MS);
+  } else {
+    cache.delete(deviceId);
+  }
+  return allowed;
+}
 
 export const initDrawingSocket = (io: Server) => {
   // Authentication middleware
@@ -49,10 +78,17 @@ export const initDrawingSocket = (io: Server) => {
   io.on('connection', (socket: Socket) => {
 
     // Join device room for drawing
-    socket.on('join_device', (deviceId: number) => {
+    socket.on('join_device', async (deviceId: number) => {
+      // Validar permiso (dueño, o amigo aceptado con allow_draws) y sembrar el
+      // cache. canDrawOnPixie devuelve false también si el pixie no existe.
+      if (!(await ensureAuthorized(socket, deviceId))) {
+        socket.emit('error', { message: 'Not authorized to draw on this device' });
+        return;
+      }
+
       const roomName = `device_${deviceId}`;
       socket.join(roomName);
-      
+
       // Create or update drawing session
       if (!activeSessions.has(deviceId)) {
         activeSessions.set(deviceId, {
@@ -90,7 +126,14 @@ export const initDrawingSocket = (io: Server) => {
         }
 
         const { deviceId, x, y, color, tool, size = 1 } = data;
-        
+
+        // El socket debe estar autorizado para este device (revalida si el
+        // cache TTL ha caducado). Cierra el escribir sin pasar por join_device.
+        if (!(await ensureAuthorized(socket, deviceId))) {
+          socket.emit('error', { message: 'Not authorized to draw on this device' });
+          return;
+        }
+
         // Validate coordinates
         if (x === undefined || y === undefined || x < 0 || x >= 64 || y < 0 || y >= 64) {
           socket.emit('error', { message: 'Invalid coordinates' });
@@ -168,9 +211,17 @@ export const initDrawingSocket = (io: Server) => {
     socket.on('clear_canvas', async (data: { deviceId: number }) => {
       try {
         const { deviceId } = data;
+
+        // Acción destructiva (borra el ESP32 físico): revalida SIEMPRE contra BD,
+        // sin fiarse del cache TTL.
+        if (!(await ensureAuthorized(socket, deviceId, true))) {
+          socket.emit('error', { message: 'Not authorized to draw on this device' });
+          return;
+        }
+
         const roomName = `device_${deviceId}`;
         const session = activeSessions.get(deviceId);
-        
+
         if (!session) {
           socket.emit('error', { message: 'Drawing session not found' });
           return;
@@ -207,9 +258,15 @@ export const initDrawingSocket = (io: Server) => {
         }
 
         const { deviceId, points, color, tool } = data;
+
+        if (!(await ensureAuthorized(socket, deviceId))) {
+          socket.emit('error', { message: 'Not authorized to draw on this device' });
+          return;
+        }
+
         const roomName = `device_${deviceId}`;
         const session = activeSessions.get(deviceId);
-        
+
         if (!session) {
           socket.emit('error', { message: 'Drawing session not found' });
           return;
