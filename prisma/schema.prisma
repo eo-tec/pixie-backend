@@ -22,6 +22,21 @@ model code_versions {
   @@schema("public")
 }
 
+// Mobile app version gate (single-row config). Controls the update prompt:
+// the app force-updates below *_min_version and softly nudges below *_latest_version.
+model app_config {
+  id                     Int      @id @default(autoincrement())
+  ios_min_version        String   @default("1.0.0")
+  ios_latest_version     String   @default("1.0.0")
+  ios_store_url          String   @default("https://apps.apple.com/app/id6759828278")
+  android_min_version    String   @default("1.0.0")
+  android_latest_version String   @default("1.0.0")
+  android_store_url      String   @default("https://play.google.com/store/apps/details?id=com.eotec.frame")
+  updated_at             DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@schema("public")
+}
+
 model group_suscriber {
   user_id  Int
   active   Boolean      @default(true)
