@@ -28,6 +28,64 @@ export async function login(req: Request, res: Response) {
   res.redirect(authorizeURL);
 }
 
+function spotifyLinkedPage(): string {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotify conectado</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #121212;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      text-align: center;
+    }
+    .card { padding: 32px; max-width: 320px; }
+    .icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 24px;
+      border-radius: 50%;
+      background: rgba(29, 185, 84, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      color: #1DB954;
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: #b3b3b3; font-size: 15px; margin: 0 0 28px; line-height: 1.4; }
+    .button {
+      display: block;
+      background: #1DB954;
+      color: #000;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      padding: 14px 24px;
+      border-radius: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">&#10003;</div>
+    <h1>Spotify conectado</h1>
+    <p>Tu cuenta de Spotify se ha vinculado correctamente. Vuelve a la app para continuar.</p>
+    <a class="button" href="ffframe://spotify-linked">Volver a la app</a>
+  </div>
+  <script>window.location.replace('ffframe://spotify-linked');</script>
+</body>
+</html>`;
+}
+
 export async function callback(req: Request, res: Response) {
   const code = req.query.code || null;
   const supabase_user_id = req.query.state || null; // This is now the Supabase UUID
@@ -77,8 +135,10 @@ export async function callback(req: Request, res: Response) {
       });
     }
 
-    // Redirect to deep link so the app can refresh user data
-    res.redirect('ffframe://spotify-linked');
+    // Safari blocks HTTP redirects to custom schemes, so instead of a 302 to
+    // ffframe:// we serve a page that tries the deep link and offers a button
+    // (a user tap is always allowed to open the app).
+    res.send(spotifyLinkedPage());
 
   } catch (err) {
     console.error('Error en el intercambio de tokens:', err);
