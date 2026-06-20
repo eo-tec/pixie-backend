@@ -535,12 +535,13 @@ export const getUserDrawablePixies = async (req: AuthenticatedRequest, res: Resp
     // TODO: Verificar que son amigos antes de permitir ver los pixies
     // Por ahora lo dejamos sin validación de amistad
 
-    // Obtener pixies del usuario que permiten dibujo (solo premium)
+    // Obtener pixies del usuario que permiten dibujo (allow_draws).
+    // Nota: el requisito de tier 'premium' se ha quitado a propósito; se irá
+    // retirando la barrera premium de las features.
     const pixies = await prisma.pixie.findMany({
       where: {
         created_by: targetUser.id,
         allow_draws: true,
-        tier: 'premium'
       },
     });
 
