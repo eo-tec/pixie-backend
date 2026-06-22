@@ -614,12 +614,21 @@ export async function handleOtaRequest(pixieId: number, hwVersion?: string, curr
   const hw = hwVersion || "v1";
 
   try {
-    // Persistir la versión de firmware que el frame reporta estar ejecutando
+    // Persistir lo que el frame reporta: versión de firmware (solo firmware nuevo)
+    // y versión de hardware (la envía todo firmware desde que existe el OTA por hw).
+    const reported: { firmware_version?: number; firmware_version_updated_at?: Date; hw_version?: string } = {};
     if (typeof currentVersion === 'number' && !Number.isNaN(currentVersion)) {
+      reported.firmware_version = currentVersion;
+      reported.firmware_version_updated_at = new Date();
+    }
+    if (hwVersion) {
+      reported.hw_version = hwVersion;
+    }
+    if (Object.keys(reported).length > 0) {
       await prisma.pixie.update({
         where: { id: pixieId },
-        data: { firmware_version: currentVersion, firmware_version_updated_at: new Date() },
-      }).catch((e) => console.warn(`[MQTT:ota] No se pudo guardar firmware_version de frame ${pixieId}:`, e));
+        data: reported,
+      }).catch((e) => console.warn(`[MQTT:ota] No se pudo guardar versión de frame ${pixieId}:`, e));
     }
 
     const version = await prisma.code_versions.findFirst({
