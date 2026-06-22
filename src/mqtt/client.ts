@@ -196,11 +196,11 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
       }
 
       case 'ota': {
-        let otaPayload: { hw_version?: string } = {};
+        let otaPayload: { hw_version?: string; current_version?: number } = {};
         try {
           otaPayload = JSON.parse(payload.toString());
         } catch { /* payload vacío o inválido */ }
-        await handleOtaRequest(pixieId, otaPayload.hw_version);
+        await handleOtaRequest(pixieId, otaPayload.hw_version, otaPayload.current_version);
         break;
       }
 

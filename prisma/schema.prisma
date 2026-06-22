@@ -121,6 +121,8 @@ model pixie {
   current_photo_id    Int?
   current_song_id     String?
   current_song_name   String?
+  firmware_version             Int?      @db.SmallInt
+  firmware_version_updated_at  DateTime? @db.Timestamptz(6)
   users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   photo_cursor        Int                @default(0)
   max_photos          Int                @default(0)

@@ -609,11 +609,19 @@ async function serveDayNightFace(pixieId: number, responseTopic: string, reqId?:
 // Topic: frame/{id}/request/ota -> frame/{id}/response/ota
 // Response: {"version":15,"url":"https://..."}
 // ============================================================================
-export async function handleOtaRequest(pixieId: number, hwVersion?: string): Promise<void> {
+export async function handleOtaRequest(pixieId: number, hwVersion?: string, currentVersion?: number): Promise<void> {
   const responseTopic = `frame/${pixieId}/response/ota`;
   const hw = hwVersion || "v1";
 
   try {
+    // Persistir la versión de firmware que el frame reporta estar ejecutando
+    if (typeof currentVersion === 'number' && !Number.isNaN(currentVersion)) {
+      await prisma.pixie.update({
+        where: { id: pixieId },
+        data: { firmware_version: currentVersion, firmware_version_updated_at: new Date() },
+      }).catch((e) => console.warn(`[MQTT:ota] No se pudo guardar firmware_version de frame ${pixieId}:`, e));
+    }
+
     const version = await prisma.code_versions.findFirst({
       where: { hw_version: hw },
       orderBy: { created_at: 'desc' }
