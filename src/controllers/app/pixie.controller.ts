@@ -5,6 +5,32 @@ import { publishToMQTT, isFrameOnline, getFrameLastSeen } from '../../mqtt/clien
 import { pixie, FriendStatus } from "@prisma/client";
 import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
 
+/** Normaliza MAC a formato AA:BB:CC:DD:EE:FF (mayúsculas). Acepta con o sin ":". */
+function normalizeMac(raw: string): string | null {
+  const hex = raw.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  if (hex.length !== 12) return null;
+  return hex.match(/.{1,2}/g)!.join(":");
+}
+
+async function findPixieByMac(rawMac: string) {
+  const mac = normalizeMac(rawMac);
+  if (!mac) return { mac: null as string | null, pixie: null };
+
+  // Match exacto normalizado o variantes sin ":" / minúsculas
+  const compact = mac.replace(/:/g, "");
+  const pixie = await prisma.pixie.findFirst({
+    where: {
+      OR: [
+        { mac },
+        { mac: compact },
+        { mac: mac.toLowerCase() },
+        { mac: compact.toLowerCase() },
+      ],
+    },
+  });
+  return { mac, pixie };
+}
+
 // Endpoint para verificar si un frame está registrado (usado durante provisioning BLE)
 export const checkFrameRegistration = async (req: Request, res: Response) => {
   const frameToken = req.params.frameToken as string;
@@ -15,10 +41,7 @@ export const checkFrameRegistration = async (req: Request, res: Response) => {
   }
 
   try {
-    // Buscar pixie por MAC (frameToken es la MAC con ":")
-    const pixie = await prisma.pixie.findFirst({
-      where: { mac: frameToken }
-    });
+    const { pixie } = await findPixieByMac(frameToken);
 
     if (pixie) {
       res.status(200).json({
@@ -33,6 +56,60 @@ export const checkFrameRegistration = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error checking frame registration:", error);
     res.status(500).json({ error: "Error checking frame registration" });
+  }
+};
+
+/**
+ * Estado de pairing para un frame visto por BLE (MAC).
+ * Usado por el scan proactivo de la app: decidir modal "solo WiFi" vs "emparejar" vs ignorar.
+ */
+export const getPairingStatus = async (req: AuthenticatedRequest, res: Response) => {
+  const rawMac = req.params.mac as string;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Usuario no autenticado" });
+    return;
+  }
+
+  if (!rawMac) {
+    res.status(400).json({ error: "mac is required" });
+    return;
+  }
+
+  try {
+    const { mac, pixie } = await findPixieByMac(rawMac);
+    if (!mac) {
+      res.status(400).json({ error: "Invalid MAC address" });
+      return;
+    }
+
+    if (!pixie) {
+      res.status(200).json({
+        exists: false,
+        hasOwner: false,
+        isMine: false,
+        frameId: null,
+        name: null,
+        mac,
+      });
+      return;
+    }
+
+    const hasOwner = pixie.created_by != null;
+    const isMine = pixie.created_by === userId;
+
+    res.status(200).json({
+      exists: true,
+      hasOwner,
+      isMine,
+      frameId: pixie.id,
+      name: pixie.name ?? null,
+      mac,
+    });
+  } catch (error) {
+    console.error("Error getting pairing status:", error);
+    res.status(500).json({ error: "Error getting pairing status" });
   }
 };
 
@@ -358,7 +435,8 @@ export const resetPixie = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 // Registrar un frame con el usuario actual (asociar pixie al usuario)
-// Acepta MAC address como identificador
+// Acepta MAC address como identificador.
+// Si el frame tenía otro dueño (reventa / regalo), se transfiere: ownership + limpia playlist.
 export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Response) => {
   const frameToken = req.params.frameToken as string;  // MAC address como "78:1C:3C:A5:B4:5C"
   const { name } = req.body;
@@ -375,20 +453,24 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
   }
 
   try {
-    // Buscar el pixie por MAC
-    const pixie = await prisma.pixie.findFirst({
-      where: { mac: frameToken }
-    });
+    const { mac, pixie } = await findPixieByMac(frameToken);
 
-    if (!pixie) {
+    if (!mac || !pixie) {
       res.status(404).json({ error: "Frame no encontrado" });
       return;
     }
 
-    // Verificar que el frame no esté ya asociado a otro usuario
-    if (pixie.created_by && pixie.created_by !== userId) {
-      res.status(403).json({ error: "Este frame ya está asociado a otro usuario" });
-      return;
+    const isTransfer = pixie.created_by != null && pixie.created_by !== userId;
+    const resolvedName = name || (isTransfer ? "Mi frame" : pixie.name) || "Pixie";
+
+    // Transferencia: limpiar rastro del dueño anterior (como unlink, sin borrar el pixie)
+    if (isTransfer) {
+      await prisma.playlist_items.deleteMany({
+        where: { pixie_id: pixie.id },
+      });
+      console.log(
+        `[Pixie] Transfer frame ${pixie.id} (MAC: ${mac}) de user ${pixie.created_by} → ${userId}`
+      );
     }
 
     // Actualizar el pixie con el usuario y nombre
@@ -396,11 +478,20 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       where: { id: pixie.id },
       data: {
         created_by: userId,
-        name: name || pixie.name || "Pixie"
-      }
+        name: resolvedName,
+        ...(isTransfer
+          ? {
+              photo_cursor: 0,
+              pictures_on_queue: 0,
+              current_photo_id: null,
+              current_song_id: null,
+              current_song_name: null,
+            }
+          : {}),
+      },
     });
 
-    // Create default playlist if none exists
+    // Create default playlist if none exists (alta nueva o tras transfer)
     const existingPlaylist = await prisma.playlist_items.findMany({
       where: { pixie_id: pixie.id },
     });
@@ -419,7 +510,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       });
     }
 
-    console.log(`[Pixie] Frame ${pixie.id} (MAC: ${frameToken}) registrado con usuario ${userId}`);
+    console.log(`[Pixie] Frame ${pixie.id} (MAC: ${mac}) registrado con usuario ${userId}${isTransfer ? " (transfer)" : ""}`);
 
     // Obtener timezone del usuario dueño del frame
     const user = await prisma.public_users.findUnique({ where: { id: userId } });
@@ -443,7 +534,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       has_owner: true
     }));
 
-    res.status(200).json({ pixie: updatedPixie });
+    res.status(200).json({ pixie: updatedPixie, transferred: isTransfer });
   } catch (error) {
     console.error("Error registrando frame con usuario:", error);
     res.status(500).json({ error: "Error al registrar el frame" });
