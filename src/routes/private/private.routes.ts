@@ -6,6 +6,7 @@ import { Request, Response } from 'express';
 import { getUser, getFriends, updateProfile, updateTimezone, deleteAccount, acceptTerms } from '../../controllers/app/user.controller';
 import { blockUser, unblockUser, getBlockedUsers } from '../../controllers/app/blocks.controller';
 import { createReport } from '../../controllers/app/reports.controller';
+import { registerPushToken, deletePushToken } from '../../controllers/app/pushTokens.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
@@ -45,6 +46,11 @@ privateRouter.get('/user/blocked', getBlockedUsers);
 
 // Reports
 privateRouter.post('/report', createReport);
+
+// Push notifications: la app reenvia el token en cada arranque (los tokens de
+// Expo rotan) y lo borra al cerrar sesion.
+privateRouter.post('/push-token', registerPushToken);
+privateRouter.delete('/push-token', deletePushToken);
 //privateRouter.get('/friends', getFriends);
 
 privateRouter.get('/pixie/photo/:id', showPhoto);
