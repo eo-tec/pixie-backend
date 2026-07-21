@@ -9,6 +9,7 @@ import { join } from "path";
 import { uploadFile } from "../../minio/minio";
 import { publishToMQTT } from "../../mqtt/client";
 import { sanitizeFilename } from "../../utils/string-utils";
+import { sendToUsers } from '../../services/push.service';
 const prisma = new PrismaClient();
 
 const MAX_ANIMATION_FRAMES = 20;
@@ -328,6 +329,63 @@ export async function imageToRGB565(buffer: Buffer) {
   return out;
 }
 
+interface PhotoNotificationInput {
+  authorId: number;
+  authorName: string;
+  photoId: number;
+  recipientIds: number[];
+  isPublic: boolean;
+}
+
+/**
+ * Avisa a quienes acaban de recibir una foto.
+ *
+ * Filtra bloqueos en ambos sentidos: la rama `usersId` de postPhoto acepta ids
+ * sin validar, asi que sin este filtro se podria notificar a alguien que te ha
+ * bloqueado (que ademas no veria la foto, porque el timeline si filtra).
+ */
+async function notifyPhotoRecipients({
+  authorId,
+  authorName,
+  photoId,
+  recipientIds,
+  isPublic,
+}: PhotoNotificationInput): Promise<void> {
+  try {
+    const candidates = [...new Set(recipientIds)].filter((id) => id !== authorId);
+    if (candidates.length === 0) return;
+
+    const blocks = await prisma.user_blocks.findMany({
+      where: {
+        OR: [
+          { blocker_id: authorId, blocked_id: { in: candidates } },
+          { blocked_id: authorId, blocker_id: { in: candidates } },
+        ],
+      },
+      select: { blocker_id: true, blocked_id: true },
+    });
+
+    const blocked = new Set<number>();
+    for (const b of blocks) {
+      blocked.add(b.blocker_id === authorId ? b.blocked_id : b.blocker_id);
+    }
+
+    const recipients = candidates.filter((id) => !blocked.has(id));
+    if (recipients.length === 0) return;
+
+    await sendToUsers(recipients, {
+      // Una foto dirigida a ti concreta vale mucho mas que una publicada al
+      // grupo, y el codigo ya distingue los dos casos.
+      key: isPublic ? 'photo_shared' : 'photo_sent_to_you',
+      category: 'friend_photos',
+      params: { actor: authorName },
+      data: { type: 'photo', entityId: photoId },
+    });
+  } catch (error) {
+    console.error('Error notificando la subida de foto:', error);
+  }
+}
+
 export async function postPhoto(req: Request, res: Response) {
   try {
     const { userId, title, photoFile, usersId, isPublic } = req.body;
@@ -492,6 +550,16 @@ export async function postPhoto(req: Request, res: Response) {
         );
       }
     }
+
+    // Notificaciones push. Sin await: enviar puede tardar y no debe retrasar la
+    // respuesta al que sube la foto. sendToUsers se traga sus propios errores.
+    void notifyPhotoRecipients({
+      authorId: user.id,
+      authorName: user.username,
+      photoId: newPhoto.id,
+      recipientIds: notifyUserIds,
+      isPublic: Boolean(isPublic),
+    });
 
     res.status(201).json(newPhoto);
   } catch (err) {
