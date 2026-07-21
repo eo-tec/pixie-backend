@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { FriendStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import { Friend, PaginatedFriendsResponse } from "../../types/frontTypes";
+import { sendToUser } from '../../services/push.service';
 
 
 
@@ -125,6 +126,16 @@ export const acceptFriend = async (req: AuthenticatedRequest, res: Response) => 
     },
   };
   res.json(friendWithStatus as Friend);
+
+  // Avisa a quien envio la solicitud. Sin await: no debe retrasar la respuesta.
+  // Si hubiera un bloqueo la amistad ya no existiria y el update de arriba
+  // habria fallado, asi que aqui no hace falta volver a comprobarlo.
+  void sendToUser(friend.user1.id, {
+    key: 'friend_accepted',
+    category: 'friendships',
+    params: { actor: friend.user2.username },
+    data: { type: 'profile', entityId: friend.user2.id },
+  });
 };
 
 export const declineFriend = async (req: AuthenticatedRequest, res: Response) => {
@@ -204,6 +215,14 @@ export const addFriend = async (req: AuthenticatedRequest, res: Response) => {
     },
   };
   res.json(friendWithStatus as Friend);
+
+  // Los bloqueos ya se comprobaron arriba antes de crear la solicitud.
+  void sendToUser(friend.user2.id, {
+    key: 'friend_request',
+    category: 'friendships',
+    params: { actor: friend.user1.username },
+    data: { type: 'friend_request', entityId: friend.user1.id },
+  });
 };
 
 export const deleteFriend = async (req: AuthenticatedRequest, res: Response) => {
