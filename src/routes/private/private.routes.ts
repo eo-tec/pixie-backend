@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { getPhotosFromUser, postPhoto, deletePhoto, getPhotoVisibility, updatePhotoVisibility, hidePhoto } from '../../controllers/app/photos.controller';
 import { verifyAuth, AuthenticatedRequest } from './checkUser';
 import { Request, Response } from 'express';
-import { getUser, getFriends, updateProfile, updateTimezone, deleteAccount, acceptTerms } from '../../controllers/app/user.controller';
+import { getUser, getFriends, updateProfile, updateTimezone, updateLanguage, updateNotificationPrefs, deleteAccount, acceptTerms } from '../../controllers/app/user.controller';
 import { blockUser, unblockUser, getBlockedUsers } from '../../controllers/app/blocks.controller';
 import { createReport } from '../../controllers/app/reports.controller';
 import { registerPushToken, deletePushToken } from '../../controllers/app/pushTokens.controller';
@@ -37,6 +37,8 @@ privateRouter.get('/me', getUser);
 privateRouter.put('/me', updateProfile);
 privateRouter.delete('/me', deleteAccount);
 privateRouter.patch('/me/timezone', updateTimezone);
+privateRouter.patch('/me/language', updateLanguage);
+privateRouter.patch('/notification-prefs', updateNotificationPrefs);
 privateRouter.post('/me/accept-terms', acceptTerms);
 
 // Block/unblock users

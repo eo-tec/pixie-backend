@@ -34,6 +34,8 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
             bio: user.bio,
             spotify_id: user.spotify_credentials ? user.spotify_credentials.spotify_id : null,
             timezone_offset: user.timezone_offset ?? 0,
+            language: user.language ?? 'en',
+            notification_prefs: user.notification_prefs,
             accepted_terms_at: user.accepted_terms_at,
         }
     });
@@ -369,4 +371,96 @@ async function acceptTerms(req: AuthenticatedRequest, res: Response) {
     }
 }
 
-export { getUser, getFriends, updateProfile, updateTimezone, deleteAccount, acceptTerms };
+
+/** Idiomas en los que el servidor sabe componer notificaciones. */
+const SUPPORTED_LANGUAGES = ['es', 'en'];
+
+async function updateLanguage(req: AuthenticatedRequest, res: Response) {
+    const id = req.user?.id;
+    if (!id) {
+        res.status(401).json({ error: 'Usuario no autenticado' });
+        return;
+    }
+
+    const { language } = req.body;
+
+    if (typeof language !== 'string') {
+        res.status(400).json({ error: 'language debe ser un string' });
+        return;
+    }
+
+    // El cliente puede mandar "es-ES"; nos quedamos con la base.
+    const base = language.split('-')[0].toLowerCase();
+    if (!SUPPORTED_LANGUAGES.includes(base)) {
+        res.status(400).json({ error: 'Idioma no soportado' });
+        return;
+    }
+
+    try {
+        const updatedUser = await prisma.public_users.update({
+            where: { id },
+            data: { language: base }
+        });
+
+        res.status(200).json({ user: { id: updatedUser.id, language: updatedUser.language } });
+    } catch (error) {
+        console.error('Error updating language:', error);
+        res.status(500).json({ error: 'Error al actualizar el idioma' });
+    }
+}
+
+const NOTIFICATION_CATEGORIES = ['friend_photos', 'friendships', 'frame_activity', 'reminders'];
+
+async function updateNotificationPrefs(req: AuthenticatedRequest, res: Response) {
+    const id = req.user?.id;
+    if (!id) {
+        res.status(401).json({ error: 'Usuario no autenticado' });
+        return;
+    }
+
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        res.status(400).json({ error: 'Se requiere un objeto de preferencias' });
+        return;
+    }
+
+    // Solo se aceptan categorias conocidas con valor booleano: asi un cliente
+    // desactualizado no puede meter basura en el jsonb.
+    const incoming: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(body)) {
+        if (!NOTIFICATION_CATEGORIES.includes(key)) continue;
+        if (typeof value !== 'boolean') {
+            res.status(400).json({ error: `El valor de ${key} debe ser booleano` });
+            return;
+        }
+        incoming[key] = value;
+    }
+
+    if (Object.keys(incoming).length === 0) {
+        res.status(400).json({ error: 'Ninguna categoria valida en la peticion' });
+        return;
+    }
+
+    try {
+        const current = await prisma.public_users.findUnique({
+            where: { id },
+            select: { notification_prefs: true }
+        });
+
+        // Merge en vez de reemplazo: la app puede enviar un solo toggle sin
+        // pisar el resto.
+        const merged = { ...(current?.notification_prefs as object ?? {}), ...incoming };
+
+        const updatedUser = await prisma.public_users.update({
+            where: { id },
+            data: { notification_prefs: merged }
+        });
+
+        res.status(200).json({ notification_prefs: updatedUser.notification_prefs });
+    } catch (error) {
+        console.error('Error updating notification prefs:', error);
+        res.status(500).json({ error: 'Error al actualizar las preferencias' });
+    }
+}
+
+export { getUser, getFriends, updateProfile, updateTimezone, updateLanguage, updateNotificationPrefs, deleteAccount, acceptTerms };

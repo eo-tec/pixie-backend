@@ -180,6 +180,13 @@ model public_users {
   bio                     String?
   user_id                 String?                  @unique
   timezone_offset         Int?                     @default(0)
+  /// Idioma para los textos que compone el servidor (push). El cliente lo
+  /// sincroniza al iniciar sesion; una notificacion se muestra con la app
+  /// cerrada, asi que no puede traducirse en el dispositivo.
+  language                String?                  @default("en")
+  /// Toggles por categoria. jsonb en vez de tabla: son 4 booleanos que se leen
+  /// siempre juntos y nunca se consultan por separado.
+  notification_prefs      Json                     @default("{\"friend_photos\":true,\"friendships\":true,\"frame_activity\":true,\"reminders\":true}")
   accepted_terms_at       DateTime?                @db.Timestamptz(6)
   friends_sent            friends[]                @relation("SentFriendships")
   friends_received        friends[]                @relation("ReceivedFriendships")
