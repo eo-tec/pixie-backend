@@ -17,6 +17,24 @@ export class DrawingService {
    * del dueño y el pixie tiene allow_draws=true. Devuelve false si el pixie
    * no existe. (El requisito de tier premium se ha quitado a propósito.)
    */
+  /**
+   * Dueño de un pixie, o `null` si no existe o no tiene dueño.
+   * Lo necesita el socket para saber a quien notificar sin repetir la consulta
+   * que ya hace canDrawOnPixie.
+   */
+  async getPixieOwner(deviceId: number): Promise<number | null> {
+    try {
+      const pixie = await prisma.pixie.findUnique({
+        where: { id: deviceId },
+        select: { created_by: true }
+      });
+      return pixie?.created_by ?? null;
+    } catch (error) {
+      console.error('Error obteniendo el dueño del pixie:', error);
+      return null;
+    }
+  }
+
   async canDrawOnPixie(userId: number, deviceId: number): Promise<boolean> {
     try {
       const pixie = await prisma.pixie.findUnique({

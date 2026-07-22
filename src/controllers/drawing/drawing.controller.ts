@@ -57,6 +57,7 @@ export const endDrawingSession = async (req: AuthenticatedRequest, res: Response
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
 
     if (!pixieId) {
@@ -97,6 +98,7 @@ export const saveDrawing = async (req: AuthenticatedRequest, res: Response) => {
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
 
     if (!pixieId || !pixels) {
@@ -142,6 +144,7 @@ export const loadDrawing = async (req: AuthenticatedRequest, res: Response) => {
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
 
     if (!pixieId || !drawingId) {
@@ -185,6 +188,7 @@ export const getDrawings = async (req: AuthenticatedRequest, res: Response) => {
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
 
     if (!pixieId) {
@@ -223,6 +227,7 @@ export const clearDrawing = async (req: AuthenticatedRequest, res: Response) => 
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
 
     if (!pixieId) {

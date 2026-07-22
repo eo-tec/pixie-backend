@@ -5,9 +5,50 @@ import { publishDrawingCommand, exitDrawingMode } from '../mqtt/drawing.mqtt';
 import { DrawingCommand, DrawingSession } from '../types/drawing.types';
 import { rateLimiter } from '../utils/rate-limiter';
 import { DrawingService } from '../services/drawing.service';
+import { sendToUser } from '../services/push.service';
 
 // Store active drawing sessions
 const activeSessions = new Map<number, DrawingSession>();
+
+/**
+ * Ultimo aviso enviado por par (frame, quien dibuja), para no repetir.
+ *
+ * `join_device` se reemite en cada reconexion del socket y cada vez que se
+ * entra en la pantalla de dibujo, asi que sin esto un rato de mala cobertura
+ * le llenaria el movil de notificaciones al dueno del frame.
+ */
+const lastDrawingNotice = new Map<string, number>();
+const DRAWING_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * Avisa al dueno de que alguien ha entrado a dibujar en su frame.
+ * No notifica al propio dueno cuando dibuja en el suyo.
+ */
+async function notifyDrawingStarted(
+  deviceId: number,
+  actorId: number,
+  actorName: string
+): Promise<void> {
+  try {
+    const ownerId = await drawingService.getPixieOwner(deviceId);
+    if (ownerId === null || ownerId === actorId) return;
+
+    const key = `${deviceId}:${actorId}`;
+    const last = lastDrawingNotice.get(key) ?? 0;
+    const now = Date.now();
+    if (now - last < DRAWING_NOTICE_COOLDOWN_MS) return;
+    lastDrawingNotice.set(key, now);
+
+    await sendToUser(ownerId, {
+      key: 'drawing_started',
+      category: 'frame_activity',
+      params: { actor: actorName },
+      data: { type: 'frame', entityId: deviceId },
+    });
+  } catch (error) {
+    console.error('Error notificando el inicio de dibujo:', error);
+  }
+}
 const drawingService = new DrawingService();
 
 // Cache de autorización por socket con TTL corto. Evita una consulta a BD por
@@ -114,6 +155,13 @@ export const initDrawingSocket = (io: Server) => {
         userId: socket.data.user.id,
         username: socket.data.user.username
       });
+
+      // Push al dueno. Aqui y no en draw_pixel: una vez por entrada, no por trazo.
+      void notifyDrawingStarted(
+        deviceId,
+        socket.data.user.id,
+        socket.data.user.username
+      );
     });
 
     // Handle drawing commands
@@ -303,6 +351,41 @@ export const initDrawingSocket = (io: Server) => {
         socket.emit('error', { message: 'Failed to process drawing stroke' });
       }
     });
+
+    /**
+     * Salida explicita de la pantalla de dibujo.
+     *
+     * La app ya emitia este evento pero no habia handler, y como el socket es
+     * un singleton que no se desconecta al salir, la unica salvacion era el
+     * timeout de 60 s del firmware. Con esto el frame vuelve a las fotos en
+     * cuanto se cierra la pantalla.
+     */
+    socket.on('leave_device', async (deviceId: number) => {
+      await removeParticipant(socket, deviceId);
+    });
+
+    /** Saca a un participante de una sesion y apaga el modo dibujo si era el ultimo. */
+    async function removeParticipant(s: Socket, deviceId: number): Promise<void> {
+      const session = activeSessions.get(deviceId);
+      if (!session || !session.participants.has(s.data.user.id)) return;
+
+      session.participants.delete(s.data.user.id);
+      s.leave(`device_${deviceId}`);
+
+      s.to(`device_${deviceId}`).emit('user_left', {
+        userId: s.data.user.id,
+        username: s.data.user.username
+      });
+
+      if (session.participants.size === 0) {
+        try {
+          await exitDrawingMode(deviceId);
+        } catch (error) {
+          console.error(`Failed to send exit drawing mode for device ${deviceId}:`, error);
+        }
+        activeSessions.delete(deviceId);
+      }
+    }
 
     // Handle disconnect
     socket.on('disconnect', async () => {
