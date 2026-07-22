@@ -253,10 +253,14 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
   }
 
   try {
-    // Verificar que el pixie pertenece al usuario
+    // Verificar que el pixie pertenece al usuario.
+    // El filtro por created_by faltaba pese al comentario: cualquier usuario
+    // autenticado podia cambiar brillo, horarios o allow_draws del frame de
+    // otro con solo conocer su id (y los ids son secuenciales).
     const existingPixie = await prisma.pixie.findFirst({
       where: {
         id: pixieId,
+        created_by: userId,
       }
     });
 
