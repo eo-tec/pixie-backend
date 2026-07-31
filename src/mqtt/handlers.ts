@@ -25,8 +25,8 @@ const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
 type AnimMeta = { photoUrl: string; frames: number };
 const ANIM_CACHE_TTL_MS = 60_000;
 // LRU caps: caches grow until they hit the max, then the least-recently-used
-// entry is evicted on insert. animBinCache at 100 × ~144 KB = ~14 MB peak.
-const ANIM_BIN_CACHE_MAX = 100;
+// entry is evicted on insert. animBinCache at 30 × ~480 KB (60 frames) = ~14 MB peak.
+const ANIM_BIN_CACHE_MAX = 30;
 const ANIM_META_CACHE_MAX = 1000;
 const animBinCache = new Map<number, { buffer: Buffer; expires: number }>();
 const animBinInflight = new Map<number, Promise<Buffer>>();

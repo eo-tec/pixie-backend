@@ -12,8 +12,8 @@ import { sanitizeFilename } from "../../utils/string-utils";
 import { sendToUsers } from '../../services/push.service';
 const prisma = new PrismaClient();
 
-const MAX_ANIMATION_FRAMES = 20;
-const ANIMATION_FPS = 5;
+const MAX_ANIMATION_FRAMES = 60;
+const ANIMATION_FPS = 15;
 const FRAME_WIDTH = 64;
 const FRAME_HEIGHT = 64;
 const FRAME_SIZE_RGB565 = FRAME_WIDTH * FRAME_HEIGHT * 2; // 8192 bytes
@@ -85,7 +85,7 @@ async function extractVideoFrames(videoBuffer: Buffer): Promise<{
   try {
     await fs.writeFile(inputPath, videoBuffer);
 
-    // Extract frames at 10fps, max 20 frames, resized to 64x64
+    // Extract frames at ANIMATION_FPS, max MAX_ANIMATION_FRAMES, resized to 64x64
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
         .outputOptions([
