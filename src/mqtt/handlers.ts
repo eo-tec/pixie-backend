@@ -735,8 +735,11 @@ export async function handleAnimationFrameRequest(
     const header = Buffer.alloc(4);
     header[0] = frameIndex;
     header[1] = meta.frames;
-    header[2] = 0; // reserved
-    header[3] = 0; // reserved
+    // animationId (u16 BE): permite al firmware descartar frames rezagados de
+    // otra animacion cuando encadena descargas (prefetch). Firmwares antiguos
+    // ignoran estos bytes.
+    header[2] = (payload.animationId >> 8) & 0xff;
+    header[3] = payload.animationId & 0xff;
 
     const responseBuffer = Buffer.concat([header, frameData]);
     publishBinary(responseTopic, responseBuffer);
