@@ -24,10 +24,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'], // Headers permitidos
 }));
 
-app.use(express.json({ limit: "10mb" })); // Aumenta el límite si las imágenes son grandes
+// 25 MB: la app sube el fichero en base64 (+33% sobre el original), y aunque
+// graba a 640x480 un vídeo elegido de la galería puede venir más pesado.
+app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true })); 
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ limit: '25mb', extended: true }));
+app.use(bodyParser.json({ limit: '25mb' }));
 
 app.use(express.json());
 
