@@ -131,7 +131,35 @@ model pixie {
   drawings            drawings[]
   drawing_sessions    drawing_sessions[]
   playlist_items      playlist_items[]
+  boot_events         boot_events[]
 
+  @@schema("public")
+}
+
+// Telemetría de arranque de los frames: el firmware publica en
+// frame/{id}/request/boot su reset_reason en cada boot y, si el arranque
+// anterior murió en panic, el resumen del core dump. El firmware manda todo;
+// la clasificación (is_error) se hace aquí. Retención: purga diaria de
+// eventos con más de 90 días (src/mqtt/handlers.ts).
+model boot_events {
+  id               Int      @id @default(autoincrement())
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  pixie_id         Int
+  reset_reason     Int
+  reset_reason_str String?
+  is_error         Boolean  @default(false)
+  boot_count       Int?
+  fw_version       Int?     @db.SmallInt
+  hw_version       String?
+  free_heap        Int?
+  crash_task       String?
+  crash_pc         String?
+  crash_exc_cause  Int?
+  crash_backtrace  String?
+  pixie            pixie    @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
+
+  @@index([pixie_id, created_at])
+  @@index([created_at])
   @@schema("public")
 }
 

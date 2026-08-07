@@ -8,7 +8,8 @@ import {
   handleOtaRequest,
   handleConfigRequest,
   handleRegisterRequest,
-  handleAnimationFrameRequest
+  handleAnimationFrameRequest,
+  handleBootEvent
 } from './handlers';
 import { createDeviceClient } from './dynSec';
 
@@ -207,6 +208,16 @@ async function handleMqttMessage(topic: string, payload: Buffer) {
       case 'config':
         await handleConfigRequest(pixieId);
         break;
+
+      case 'boot': {
+        // Telemetría de arranque: fire-and-forget, no hay response
+        let bootPayload: Record<string, unknown> = {};
+        try {
+          bootPayload = JSON.parse(payload.toString());
+        } catch { /* payload vacío o inválido */ }
+        await handleBootEvent(pixieId, bootPayload);
+        break;
+      }
 
       case 'animation/frame': {
         let animPayload: { animationId: number; frame: number } = { animationId: 0, frame: 0 };

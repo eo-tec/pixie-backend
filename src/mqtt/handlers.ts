@@ -655,6 +655,74 @@ export async function handleOtaRequest(pixieId: number, hwVersion?: string, curr
 }
 
 // ============================================================================
+// HANDLER: Boot Event
+// Topic: frame/{id}/request/boot (fire-and-forget, sin response)
+// Payload: {"reset_reason":4,"boot_count":123,"fw_version":15,"hw_version":"v2",
+//           "free_heap":123456,"crash":{"task":"loopTask","pc":"0x400d1234",
+//           "exc_cause":29,"backtrace":"0x... 0x...","corrupted":false}}
+// El firmware manda TODOS los arranques; la clasificación error/normal se
+// hace aquí (cambiable sin OTA).
+// ============================================================================
+const RESET_REASONS: Record<number, { name: string; isError: boolean }> = {
+  0: { name: 'UNKNOWN', isError: true },
+  1: { name: 'POWERON', isError: false },   // power on / corte de alimentación
+  2: { name: 'EXT', isError: false },       // reset por pin externo
+  3: { name: 'SW', isError: false },        // ESP.restart() (OTA, factory reset...)
+  4: { name: 'PANIC', isError: true },      // excepción de software → habrá core dump
+  5: { name: 'INT_WDT', isError: true },    // interrupt watchdog
+  6: { name: 'TASK_WDT', isError: true },   // task watchdog (loop colgado)
+  7: { name: 'WDT', isError: true },        // otros watchdogs
+  8: { name: 'DEEPSLEEP', isError: false },
+  9: { name: 'BROWNOUT', isError: true },   // caída de tensión (PSU)
+  10: { name: 'SDIO', isError: false },
+};
+
+export async function handleBootEvent(pixieId: number, payload: any): Promise<void> {
+  const reason = typeof payload.reset_reason === 'number' ? payload.reset_reason : -1;
+  const info = RESET_REASONS[reason] ?? { name: `UNKNOWN(${reason})`, isError: true };
+  const crash = payload.crash ?? null;
+
+  await prisma.boot_events.create({
+    data: {
+      pixie_id: pixieId,
+      reset_reason: reason,
+      reset_reason_str: info.name,
+      is_error: info.isError,
+      boot_count: typeof payload.boot_count === 'number' ? payload.boot_count : null,
+      fw_version: typeof payload.fw_version === 'number' ? payload.fw_version : null,
+      hw_version: typeof payload.hw_version === 'string' ? payload.hw_version : null,
+      free_heap: typeof payload.free_heap === 'number' ? payload.free_heap : null,
+      crash_task: typeof crash?.task === 'string' ? crash.task : null,
+      crash_pc: typeof crash?.pc === 'string' ? crash.pc : null,
+      crash_exc_cause: typeof crash?.exc_cause === 'number' ? crash.exc_cause : null,
+      crash_backtrace: typeof crash?.backtrace === 'string' ? crash.backtrace : null,
+    },
+  });
+
+  const log = info.isError ? console.warn : console.log;
+  log(`[MQTT:boot] Frame ${pixieId} arrancó tras ${info.name}` +
+    `${crash ? ` con core dump (task=${crash.task} pc=${crash.pc})` : ''}` +
+    ` (fw v${payload.fw_version ?? '?'}, boot #${payload.boot_count ?? '?'})`);
+}
+
+// Purga diaria de boot_events antiguos (los eventos en crudo solo interesan
+// recientes; para tendencias largas ya se agregará)
+const BOOT_EVENTS_RETENTION_DAYS = 90;
+async function purgeOldBootEvents(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - BOOT_EVENTS_RETENTION_DAYS * 24 * 3600 * 1000);
+    const { count } = await prisma.boot_events.deleteMany({
+      where: { created_at: { lt: cutoff } },
+    });
+    if (count > 0) console.log(`[MQTT:boot] Purgados ${count} boot_events de más de ${BOOT_EVENTS_RETENTION_DAYS} días`);
+  } catch (err) {
+    console.error('[MQTT:boot] Error purgando boot_events:', err);
+  }
+}
+setInterval(purgeOldBootEvents, 24 * 3600 * 1000).unref();
+setTimeout(purgeOldBootEvents, 60_000).unref(); // primera pasada tras arrancar
+
+// ============================================================================
 // HANDLER: Config Request
 // Topic: frame/{id}/request/config -> frame/{id}/response/config
 // Response: {"brightness":50,"pictures_on_queue":10,"spotify_enabled":true,...}
