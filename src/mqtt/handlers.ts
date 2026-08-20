@@ -32,6 +32,21 @@ const animBinCache = new Map<number, { buffer: Buffer; expires: number }>();
 const animBinInflight = new Map<number, Promise<Buffer>>();
 const animMetaCache = new Map<number, { meta: AnimMeta | null; expires: number }>();
 
+// Capacidades del frame que pide, para decidir el tamaño de los fotogramas.
+// Un panel de 32x32 (hw v1) no necesita los 64x64: recibía 8192 bytes por
+// fotograma para quedarse con 2048 tras reducirlos él mismo, y es justo el
+// hardware con menos memoria para tragar mensajes de 8 KB.
+type PixieCaps = { hw: string | null; fw: number | null };
+const pixieCapsCache = new Map<number, { caps: PixieCaps; expires: number }>();
+// Mismo motivo que animBinInflight: un frame pide sus 120 fotogramas de golpe y
+// sin esto la primera ráfaga dispararía 120 consultas idénticas antes de que la
+// caché llegara a llenarse.
+const pixieCapsInflight = new Map<number, Promise<PixieCaps>>();
+const PIXIE_CAPS_CACHE_MAX = 1000;
+// Solo desde esta versión de firmware: las anteriores dan por hecho que el
+// payload trae 64x64 y leerían fuera del mensaje (ver handleAnimationFrameResponse).
+const V1_PRESCALE_MIN_FW = 14;
+
 // Map preserves insertion order; deleting + re-setting bumps a key to the end.
 function lruTouch<V>(map: Map<number, V>, key: number, value: V): void {
   if (map.has(key)) map.delete(key);
@@ -53,7 +68,60 @@ setInterval(() => {
   for (const [id, entry] of animMetaCache) {
     if (entry.expires <= now) animMetaCache.delete(id);
   }
+  for (const [id, entry] of pixieCapsCache) {
+    if (entry.expires <= now) pixieCapsCache.delete(id);
+  }
 }, 30_000).unref();
+
+async function getPixieCaps(pixieId: number): Promise<PixieCaps> {
+  const cached = pixieCapsCache.get(pixieId);
+  if (cached && cached.expires > Date.now()) {
+    lruTouch(pixieCapsCache, pixieId, cached);
+    return cached.caps;
+  }
+
+  const inflight = pixieCapsInflight.get(pixieId);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    const pixie = await prisma.pixie.findUnique({
+      where: { id: pixieId },
+      select: { hw_version: true, firmware_version: true },
+    });
+    const caps: PixieCaps = {
+      hw: pixie?.hw_version ?? null,
+      fw: pixie?.firmware_version ?? null,
+    };
+    lruTouch(pixieCapsCache, pixieId, { caps, expires: Date.now() + ANIM_CACHE_TTL_MS });
+    lruEvict(pixieCapsCache, PIXIE_CAPS_CACHE_MAX);
+    return caps;
+  })().finally(() => pixieCapsInflight.delete(pixieId));
+
+  pixieCapsInflight.set(pixieId, promise);
+  return promise;
+}
+
+// ¿Este frame quiere los fotogramas ya reducidos a 32x32?
+function wantsHalfSize(caps: PixieCaps): boolean {
+  return caps.hw === 'v1' && typeof caps.fw === 'number' && caps.fw >= V1_PRESCALE_MIN_FW;
+}
+
+// Reduce 64x64 → 32x32 quedándose con el píxel superior izquierdo de cada bloque
+// 2x2. Es exactamente lo que hacía el firmware al recibirlo, así que la imagen
+// que acaba en el panel es la misma; lo único que cambia es quién lo hace y
+// cuántos bytes viajan.
+function halfSizeFrame(frame: Buffer): Buffer {
+  const out = Buffer.allocUnsafe(32 * 32 * 2);
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const src = (y * 2 * 64 + x * 2) * 2;
+      const dst = (y * 32 + x) * 2;
+      out[dst] = frame[src];
+      out[dst + 1] = frame[src + 1];
+    }
+  }
+  return out;
+}
 
 async function getAnimMeta(animationId: number): Promise<AnimMeta | null> {
   const cached = animMetaCache.get(animationId);
@@ -797,7 +865,13 @@ export async function handleAnimationFrameRequest(
 
     // Extract the requested frame
     const offset = frameIndex * FRAME_SIZE_RGB565;
-    const frameData = binBuffer.subarray(offset, offset + FRAME_SIZE_RGB565);
+    const fullFrame = binBuffer.subarray(offset, offset + FRAME_SIZE_RGB565);
+
+    // Los paneles de 32x32 con firmware capaz reciben el fotograma ya reducido:
+    // 2052 bytes en vez de 8196, una cuarta parte del tráfico hacia el hardware
+    // que peor lo lleva.
+    const caps = await getPixieCaps(pixieId);
+    const frameData = wantsHalfSize(caps) ? halfSizeFrame(fullFrame) : fullFrame;
 
     // Build response: 4-byte header + 8192 bytes frame data
     const header = Buffer.alloc(4);
