@@ -12,11 +12,18 @@ import { sanitizeFilename } from "../../utils/string-utils";
 import { sendToUsers } from '../../services/push.service';
 const prisma = new PrismaClient();
 
-const MAX_ANIMATION_FRAMES = 60;
+// 120 frames a 15 fps = 8 s. Tiene que cuadrar con RECORDING_DURATION en la app
+// y con MAX_ANIM_FRAMES en el firmware (globals.h): el frame indexa slots con un
+// u8 en la cabecera MQTT, asi que 255 es el tope duro del protocolo.
+const MAX_ANIMATION_FRAMES = 120;
 const ANIMATION_FPS = 15;
 const FRAME_WIDTH = 64;
 const FRAME_HEIGHT = 64;
 const FRAME_SIZE_RGB565 = FRAME_WIDTH * FRAME_HEIGHT * 2; // 8192 bytes
+// Ventana maxima que se puede extraer de un video, derivada de los dos numeros
+// de arriba: pedir mas frames de los que el frame sabe guardar no sirve de nada.
+const MAX_CLIP_MS = (MAX_ANIMATION_FRAMES / ANIMATION_FPS) * 1000; // 8000 ms
+const MIN_CLIP_MS = 1000;
 
 /**
  * Extract frames from an animated GIF, resize to 64x64, convert to RGB565 binary.
@@ -71,9 +78,32 @@ async function extractAnimationFrames(gifBuffer: Buffer): Promise<{
 }
 
 /**
+ * Normaliza la ventana de recorte que manda la app. Devuelve undefined cuando no
+ * hay recorte que aplicar (cliente antiguo que no manda los campos, o valores
+ * sin sentido), y en ese caso se extrae desde el principio como siempre.
+ *
+ * La validacion vive aqui y no en el cliente a proposito: la app clampa para dar
+ * feedback en la UI, pero quien decide cuanto se decodifica es el servidor.
+ */
+function parseClip(startMs: unknown, endMs: unknown): { startMs: number; endMs: number } | undefined {
+  const start = Number(startMs);
+  const end = Number(endMs);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
+  if (start < 0 || end <= start) return undefined;
+
+  const duration = Math.min(end - start, MAX_CLIP_MS);
+  if (duration < MIN_CLIP_MS) return undefined;
+
+  return { startMs: start, endMs: start + duration };
+}
+
+/**
  * Extract frames from an MP4 video using ffmpeg, resize to 64x64, convert to RGB565 binary.
  */
-async function extractVideoFrames(videoBuffer: Buffer): Promise<{
+async function extractVideoFrames(
+  videoBuffer: Buffer,
+  clip?: { startMs: number; endMs: number },
+): Promise<{
   bin: Buffer;
   frameCount: number;
   firstFramePng: Buffer;
@@ -85,12 +115,23 @@ async function extractVideoFrames(videoBuffer: Buffer): Promise<{
   try {
     await fs.writeFile(inputPath, videoBuffer);
 
-    // Extract frames at ANIMATION_FPS, max MAX_ANIMATION_FRAMES, resized to 64x64
+    // Extract frames at ANIMATION_FPS, max MAX_ANIMATION_FRAMES, resized to 64x64.
+    // `-ss` va como opcion de *entrada* (y no de salida) para que ffmpeg salte
+    // por keyframes hasta el corte en lugar de decodificar el video desde el
+    // principio y tirar lo que sobra; accurate_seek viene activo por defecto,
+    // asi que el punto sigue siendo exacto.
     await new Promise<void>((resolve, reject) => {
-      ffmpeg(inputPath)
+      const command = ffmpeg(inputPath);
+      if (clip) {
+        command.inputOptions(["-ss", (clip.startMs / 1000).toFixed(3)]);
+      }
+      command
         .outputOptions([
           "-vf", `fps=${ANIMATION_FPS},crop=min(iw\\,ih):min(iw\\,ih),scale=${FRAME_WIDTH}:${FRAME_HEIGHT}`,
+          // -frames:v se queda aunque -t ya acote la ventana: es el tope que
+          // protege el buffer del frame si llega un clip mal formado.
           "-frames:v", String(MAX_ANIMATION_FRAMES),
+          ...(clip ? ["-t", ((clip.endMs - clip.startMs) / 1000).toFixed(3)] : []),
         ])
         .output(outputPattern)
         .on("end", () => resolve())
@@ -388,7 +429,7 @@ async function notifyPhotoRecipients({
 
 export async function postPhoto(req: Request, res: Response) {
   try {
-    const { userId, title, photoFile, usersId, isPublic } = req.body;
+    const { userId, title, photoFile, usersId, isPublic, startMs, endMs } = req.body;
 
     if (!userId || !photoFile) {
       res.status(400).send("Error: datos incompletos.");
@@ -432,8 +473,12 @@ export async function postPhoto(req: Request, res: Response) {
     let videoUrl: string | null = null;
 
     if (isAnimation) {
+      const clip = isVideo ? parseClip(startMs, endMs) : undefined;
+      if (clip) {
+        console.log(`[Upload] Clip solicitado: ${clip.startMs}ms -> ${clip.endMs}ms`);
+      }
       const { bin, frameCount, firstFramePng } = isVideo
-        ? await extractVideoFrames(fileBuffer)
+        ? await extractVideoFrames(fileBuffer, clip)
         : await extractAnimationFrames(fileBuffer);
       processedImage = firstFramePng;
 
