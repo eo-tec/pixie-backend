@@ -72,66 +72,66 @@ model photo_groups {
 }
 
 model photos {
-  id           Int                      @id @default(autoincrement())
-  created_at   DateTime                 @default(dbgenerated("(now() AT TIME ZONE 'utc'::text)")) @db.Timestamptz(6)
-  photo_url    String?
-  username     String?
-  title        String?
-  user_id      Int?
-  photo_pixels Json                     @default("{}")
-  deleted_at   DateTime?                @db.Timestamptz(6)
-  is_public         Boolean                  @default(false)
-  is_animation      Boolean                  @default(false)
-  animation_frames  Int?
-  animation_fps     Int?
-  is_flagged        Boolean                  @default(false)
-  video_url         String?
-  photo_groups photo_groups[]
-  visible_by   photo_visible_by_users[]
-  hidden_by    photo_hidden_by_users[]
-  users        public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  reactions    photo_reactions[]
+  id                  Int                      @id @default(autoincrement())
+  created_at          DateTime                 @default(dbgenerated("(now() AT TIME ZONE 'utc'::text)")) @db.Timestamptz(6)
+  photo_url           String?
+  username            String?
+  title               String?
+  user_id             Int?
+  photo_pixels        Json                     @default("{}")
+  deleted_at          DateTime?                @db.Timestamptz(6)
+  is_public           Boolean                  @default(false)
+  is_animation        Boolean                  @default(false)
+  animation_frames    Int?
+  animation_fps       Int?
+  is_flagged          Boolean                  @default(false)
+  video_url           String?
+  photo_groups        photo_groups[]
+  visible_by          photo_visible_by_users[]
+  hidden_by           photo_hidden_by_users[]
+  users               public_users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reactions           photo_reactions[]
   comments            photo_comments[]
-  currently_on_pixies pixie[]              @relation("CurrentPhoto")
+  currently_on_pixies pixie[]                  @relation("CurrentPhoto")
   reports             content_reports[]
 
   @@schema("public")
 }
 
 model pixie {
-  id                  Int                @id @default(autoincrement())
-  created_at          DateTime           @default(now()) @db.Timestamptz(6)
-  created_by          Int?
-  brightness          Int?               @default(50)
-  pictures_on_queue   Int?               @default(5)
-  name                String?
-  mac                 String
-  code                String?            @default("0000")
-  secs_between_photos Int?               @default(60)
-  spotify_enabled     Boolean            @default(false)
-  allow_draws         Boolean            @default(false)
-  schedule_enabled    Boolean            @default(false)
-  schedule_on_hour    Int?               @default(8)
-  schedule_on_minute  Int?               @default(0)
-  schedule_off_hour   Int?               @default(22)
-  schedule_off_minute Int?               @default(0)
-  clock_enabled       Boolean            @default(false)
-  tier                PixieTier          @default(free)
-  mqtt_password       String?
-  current_photo_id    Int?
-  current_song_id     String?
-  current_song_name   String?
-  firmware_version             Int?      @db.SmallInt
-  firmware_version_updated_at  DateTime? @db.Timestamptz(6)
-  hw_version                   String?
-  users               public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  photo_cursor        Int                @default(0)
-  max_photos          Int                @default(0)
-  current_photo       photos?            @relation("CurrentPhoto", fields: [current_photo_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  drawings            drawings[]
-  drawing_sessions    drawing_sessions[]
-  playlist_items      playlist_items[]
-  boot_events         boot_events[]
+  id                          Int                @id @default(autoincrement())
+  created_at                  DateTime           @default(now()) @db.Timestamptz(6)
+  created_by                  Int?
+  brightness                  Int?               @default(50)
+  pictures_on_queue           Int?               @default(5)
+  name                        String?
+  mac                         String
+  code                        String?            @default("0000")
+  secs_between_photos         Int?               @default(60)
+  spotify_enabled             Boolean            @default(false)
+  allow_draws                 Boolean            @default(false)
+  schedule_enabled            Boolean            @default(false)
+  schedule_on_hour            Int?               @default(8)
+  schedule_on_minute          Int?               @default(0)
+  schedule_off_hour           Int?               @default(22)
+  schedule_off_minute         Int?               @default(0)
+  clock_enabled               Boolean            @default(false)
+  tier                        PixieTier          @default(free)
+  mqtt_password               String?
+  current_photo_id            Int?
+  current_song_id             String?
+  current_song_name           String?
+  firmware_version            Int?               @db.SmallInt
+  firmware_version_updated_at DateTime?          @db.Timestamptz(6)
+  hw_version                  String?
+  users                       public_users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  photo_cursor                Int                @default(0)
+  max_photos                  Int                @default(0)
+  current_photo               photos?            @relation("CurrentPhoto", fields: [current_photo_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  drawings                    drawings[]
+  drawing_sessions            drawing_sessions[]
+  playlist_items              playlist_items[]
+  boot_events                 boot_events[]
 
   @@schema("public")
 }
@@ -347,15 +347,15 @@ model drawings {
 }
 
 model drawing_sessions {
-  id           Int          @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   pixie_id     Int
   drawing_id   Int?
-  is_active    Boolean      @default(true)
+  is_active    Boolean   @default(true)
   participants Json
-  created_at   DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime     @default(now()) @db.Timestamptz(6)
-  pixie        pixie        @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
-  drawing      drawings?    @relation(fields: [drawing_id], references: [id], onDelete: SetNull)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  pixie        pixie     @relation(fields: [pixie_id], references: [id], onDelete: Cascade)
+  drawing      drawings? @relation(fields: [drawing_id], references: [id], onDelete: SetNull)
 
   @@schema("public")
 }
@@ -378,6 +378,69 @@ model waitlist {
   email      String   @unique
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
+  @@schema("public")
+}
+
+// Validación de demanda tipo Prelaunch.com en la landing (frame64.fun):
+// visita → email → página de reserva (precio + depósito reembolsable) →
+// Stripe o "No, gracias" + encuesta. La landing escribe aquí a través de
+// /admin/prelaunch con la clave de admin; nadie llama a esto directamente.
+
+// Una fila por visitante y página, para el denominador del embudo. Las
+// visitas de bots y del revisor de anuncios de Meta se filtran en la landing.
+model prelaunch_visits {
+  id           Int      @id @default(autoincrement())
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  visitor_id   String
+  page         String // "home" | "reserve"
+  lang         String?
+  utm_source   String?
+  utm_campaign String?
+  utm_content  String?
+
+  @@unique([visitor_id, page])
+  @@index([created_at])
+  @@schema("public")
+}
+
+// Quien deja el email. El token viaja a Stripe como client_reference_id para
+// unir el pago con el lead. Los UTM son del primer contacto: no se pisan.
+model prelaunch_leads {
+  id                Int                          @id @default(autoincrement())
+  created_at        DateTime                     @default(now()) @db.Timestamptz(6)
+  token             String                       @unique @default(uuid())
+  email             String                       @unique
+  visitor_id        String?
+  lang              String?
+  source            String?
+  utm_source        String?
+  utm_medium        String?
+  utm_campaign      String?
+  utm_content       String?
+  utm_term          String?
+  reserve_viewed_at DateTime?                    @db.Timestamptz(6)
+  declined_at       DateTime?                    @db.Timestamptz(6)
+  reserved_at       DateTime?                    @db.Timestamptz(6)
+  refunded_at       DateTime?                    @db.Timestamptz(6)
+  amount_cents      Int?
+  currency          String?
+  stripe_session_id String?                      @unique
+  stripe_payment_id String?
+  surveys           prelaunch_survey_responses[]
+
+  @@index([created_at])
+  @@schema("public")
+}
+
+model prelaunch_survey_responses {
+  id         Int             @id @default(autoincrement())
+  created_at DateTime        @default(now()) @db.Timestamptz(6)
+  lead_id    Int
+  kind       String // "declined" | "reserved"
+  answers    Json
+  lead       prelaunch_leads @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@unique([lead_id, kind])
   @@schema("public")
 }
 
@@ -407,18 +470,18 @@ model user_blocks {
 }
 
 model content_reports {
-  id          Int          @id @default(autoincrement())
-  reporter_id Int
-  photo_id    Int?
+  id               Int           @id @default(autoincrement())
+  reporter_id      Int
+  photo_id         Int?
   reported_user_id Int?
-  reason      ReportReason
-  description String?      @db.VarChar(500)
-  status      ReportStatus @default(pending)
-  created_at  DateTime     @default(now()) @db.Timestamptz(6)
-  reviewed_at DateTime?    @db.Timestamptz(6)
-  reporter    public_users @relation("ReportsSent", fields: [reporter_id], references: [id], onDelete: Cascade)
-  reported_user public_users? @relation("ReportsReceived", fields: [reported_user_id], references: [id], onDelete: Cascade)
-  photo       photos?      @relation(fields: [photo_id], references: [id], onDelete: Cascade)
+  reason           ReportReason
+  description      String?       @db.VarChar(500)
+  status           ReportStatus  @default(pending)
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  reviewed_at      DateTime?     @db.Timestamptz(6)
+  reporter         public_users  @relation("ReportsSent", fields: [reporter_id], references: [id], onDelete: Cascade)
+  reported_user    public_users? @relation("ReportsReceived", fields: [reported_user_id], references: [id], onDelete: Cascade)
+  photo            photos?       @relation(fields: [photo_id], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
