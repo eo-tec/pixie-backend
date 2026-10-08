@@ -8,6 +8,7 @@ import prisma from '../../services/prisma';
 
 const PAGES = new Set(['home', 'reserve']);
 const KINDS = new Set(['declined', 'reserved']);
+const EXIT_REASONS = new Set(['price', 'understand', 'not_for_me', 'other']);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function str(value: unknown, max = 200): string | undefined {
@@ -108,6 +109,39 @@ export async function markStep(req: Request, res: Response) {
     res.json({ ok: true, updated: updated.count });
   } catch (err) {
     console.error('[prelaunch] step', err);
+    res.status(500).json({ error: 'internal' });
+  }
+}
+
+/**
+ * Por qué cierra el popup del email sin apuntarse. Sin lead: va ligado al
+ * visitante, una respuesta por visitante (la landing solo pregunta una vez).
+ */
+export async function saveExitSurvey(req: Request, res: Response) {
+  const visitorId = str(req.body?.visitor_id, 64);
+  const reason = str(req.body?.reason, 16);
+  if (!visitorId || !reason || !EXIT_REASONS.has(reason)) {
+    res.status(400).json({ error: 'visitor_id and a valid reason are required' });
+    return;
+  }
+  const utm = utmFields(req.body?.utm);
+  const data = {
+    reason,
+    text: str(req.body?.text, 1000),
+    lang: str(req.body?.lang, 8),
+    utm_source: utm.utm_source,
+    utm_campaign: utm.utm_campaign,
+    utm_content: utm.utm_content,
+  };
+  try {
+    await prisma.prelaunch_exit_surveys.upsert({
+      where: { visitor_id: visitorId },
+      create: { visitor_id: visitorId, ...data },
+      update: data,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[prelaunch] exit', err);
     res.status(500).json({ error: 'internal' });
   }
 }
@@ -255,7 +289,7 @@ export async function getStats(req: Request, res: Response) {
     return;
   }
   try {
-    const [visits, leads] = await Promise.all([
+    const [visits, leads, exits] = await Promise.all([
       prisma.prelaunch_visits.groupBy({
         by: ['page', 'utm_content'],
         where: { created_at: { gte: from } },
@@ -270,6 +304,7 @@ export async function getStats(req: Request, res: Response) {
         select: {
           created_at: true,
           lang: true,
+          source: true,
           utm_content: true,
           reserve_viewed_at: true,
           declined_at: true,
@@ -277,6 +312,11 @@ export async function getStats(req: Request, res: Response) {
           refunded_at: true,
           surveys: { select: { kind: true, answers: true, created_at: true } },
         },
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.prelaunch_exit_surveys.findMany({
+        where: { created_at: { gte: from } },
+        select: { reason: true, text: true, utm_content: true, created_at: true },
         orderBy: { created_at: 'desc' },
       }),
     ]);
@@ -307,9 +347,14 @@ export async function getStats(req: Request, res: Response) {
       for (const s of l.surveys) surveys.push({ ...s, utm_content: l.utm_content });
     }
 
+    // Emails recuperados al enseñar el precio en la encuesta de salida.
+    const recovered = leads.filter((l) => l.source === 'exit-price').length;
+
     res.json({
       from: from.toISOString(),
       total,
+      exits,
+      recovered,
       by_ad: [...byAd.values()].sort((a, b) => b.leads - a.leads),
       surveys,
     });

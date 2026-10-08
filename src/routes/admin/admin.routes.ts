@@ -6,6 +6,7 @@ import {
   createLead,
   markStep,
   saveSurvey,
+  saveExitSurvey,
   recordReservation,
   recordRefund,
   getStats,
@@ -22,6 +23,7 @@ adminRouter.post('/prelaunch/visit', recordVisit);
 adminRouter.post('/prelaunch/lead', createLead);
 adminRouter.post('/prelaunch/step', markStep);
 adminRouter.post('/prelaunch/survey', saveSurvey);
+adminRouter.post('/prelaunch/exit', saveExitSurvey);
 adminRouter.post('/prelaunch/reservation', recordReservation);
 adminRouter.post('/prelaunch/refund', recordRefund);
 adminRouter.get('/prelaunch/stats', getStats);
