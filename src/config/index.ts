@@ -16,6 +16,8 @@ export const GUESS_SPOTIFY_REDIRECT_URI = process.env.GUESS_SPOTIFY_REDIRECT_URI
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 export const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
+// Clave corta solo para leer las pantallas de estadísticas y leads de la landing
+export const DASHBOARD_KEY = process.env.DASHBOARD_KEY || '';
 
 // Crear el cliente de Supabase tipado (si tienes `src/types/supabase.ts`)
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_KEY);

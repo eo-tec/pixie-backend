@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { verifyAdminKey } from '../../middleware/adminAuth';
+import { verifyAdminKey, verifyDashboardKey } from '../../middleware/adminAuth';
 import { provisionFrame } from '../../controllers/admin/provision.controller';
 import {
   recordVisit,
@@ -15,6 +15,11 @@ import {
 
 export const adminRouter = Router();
 
+// Pantallas de estadísticas y leads de la landing: van antes del use() para
+// que también valga la clave corta del dashboard.
+adminRouter.get('/prelaunch/stats', verifyDashboardKey, getStats);
+adminRouter.get('/prelaunch/leads', verifyDashboardKey, listLeads);
+
 adminRouter.use(verifyAdminKey);
 
 adminRouter.post('/frames/provision', provisionFrame);
@@ -27,5 +32,3 @@ adminRouter.post('/prelaunch/survey', saveSurvey);
 adminRouter.post('/prelaunch/exit', saveExitSurvey);
 adminRouter.post('/prelaunch/reservation', recordReservation);
 adminRouter.post('/prelaunch/refund', recordRefund);
-adminRouter.get('/prelaunch/stats', getStats);
-adminRouter.get('/prelaunch/leads', listLeads);
