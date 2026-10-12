@@ -10,6 +10,7 @@ import {
   recordReservation,
   recordRefund,
   getStats,
+  listLeads,
 } from '../../controllers/admin/prelaunch.controller';
 
 export const adminRouter = Router();
@@ -27,3 +28,4 @@ adminRouter.post('/prelaunch/exit', saveExitSurvey);
 adminRouter.post('/prelaunch/reservation', recordReservation);
 adminRouter.post('/prelaunch/refund', recordRefund);
 adminRouter.get('/prelaunch/stats', getStats);
+adminRouter.get('/prelaunch/leads', listLeads);

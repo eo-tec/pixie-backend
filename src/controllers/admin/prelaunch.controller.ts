@@ -276,29 +276,40 @@ const emptyRow = (key: string): Row => ({
   refunded: 0,
 });
 
+/** `from` (por defecto, hace 30 días) y `to` opcional, en ISO; null si alguno no es una fecha. */
+function dateRange(req: Request): { from: Date; to?: Date } | null {
+  const fromParam = str(req.query.from as string, 32);
+  const toParam = str(req.query.to as string, 32);
+  const from = fromParam ? new Date(fromParam) : new Date(Date.now() - 30 * 864e5);
+  const to = toParam ? new Date(toParam) : undefined;
+  if (Number.isNaN(from.getTime()) || (to && Number.isNaN(to.getTime()))) return null;
+  return { from, to };
+}
+
 /**
- * Embudo desde `from` (por defecto, 30 días), total y por utm_content (la
+ * Embudo entre `from` (por defecto, 30 días) y `to` (por defecto, ahora), total y por utm_content (la
  * creatividad), más las respuestas de las encuestas en bruto: el dashboard
  * conoce las preguntas y las agrega él.
  */
 export async function getStats(req: Request, res: Response) {
-  const fromParam = str(req.query.from as string, 32);
-  const from = fromParam ? new Date(fromParam) : new Date(Date.now() - 30 * 864e5);
-  if (Number.isNaN(from.getTime())) {
-    res.status(400).json({ error: 'invalid from' });
+  const range = dateRange(req);
+  if (!range) {
+    res.status(400).json({ error: 'invalid from or to' });
     return;
   }
+  const { from, to } = range;
+  const created_at = { gte: from, ...(to && { lt: to }) };
   try {
     const [visits, leads, exits] = await Promise.all([
       prisma.prelaunch_visits.groupBy({
         by: ['page', 'utm_content'],
-        where: { created_at: { gte: from } },
+        where: { created_at },
         _count: { _all: true },
       }),
       prisma.prelaunch_leads.findMany({
         // Las pruebas del equipo (?internal=1) y los bots no son demanda.
         where: {
-          created_at: { gte: from },
+          created_at,
           OR: [{ source: null }, { source: { notIn: ['internal', 'bot'] } }],
         },
         select: {
@@ -315,7 +326,7 @@ export async function getStats(req: Request, res: Response) {
         orderBy: { created_at: 'desc' },
       }),
       prisma.prelaunch_exit_surveys.findMany({
-        where: { created_at: { gte: from } },
+        where: { created_at },
         select: { reason: true, text: true, utm_content: true, created_at: true },
         orderBy: { created_at: 'desc' },
       }),
@@ -352,6 +363,7 @@ export async function getStats(req: Request, res: Response) {
 
     res.json({
       from: from.toISOString(),
+      to: to?.toISOString() ?? null,
       total,
       exits,
       recovered,
@@ -360,6 +372,98 @@ export async function getStats(req: Request, res: Response) {
     });
   } catch (err) {
     console.error('[prelaunch] stats', err);
+    res.status(500).json({ error: 'internal' });
+  }
+}
+
+/**
+ * Lista de leads para el CRM de la landing: cada email con su origen, su
+ * recorrido por el embudo y sus respuestas. Incluye las pruebas internas
+ * marcadas como tales (el dashboard las oculta por defecto). Se cruza con
+ * las visitas del mismo navegador para saber de qué anuncio llegó la primera
+ * vez, aunque al apuntarse ya no trajera UTM. El token no sale de aquí: es
+ * lo que une el pago con el lead.
+ */
+export async function listLeads(req: Request, res: Response) {
+  const range = dateRange(req);
+  if (!range) {
+    res.status(400).json({ error: 'invalid from or to' });
+    return;
+  }
+  const { from, to } = range;
+  try {
+    const leads = await prisma.prelaunch_leads.findMany({
+      where: { created_at: { gte: from, ...(to && { lt: to }) } },
+      select: {
+        id: true,
+        created_at: true,
+        email: true,
+        visitor_id: true,
+        lang: true,
+        source: true,
+        utm_source: true,
+        utm_medium: true,
+        utm_campaign: true,
+        utm_content: true,
+        utm_term: true,
+        reserve_viewed_at: true,
+        declined_at: true,
+        reserved_at: true,
+        refunded_at: true,
+        amount_cents: true,
+        currency: true,
+        stripe_payment_id: true,
+        surveys: { select: { kind: true, answers: true, created_at: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    const visitorIds = [...new Set(leads.map((l) => l.visitor_id).filter((v): v is string => !!v))];
+    const [visits, exits] = visitorIds.length
+      ? await Promise.all([
+          prisma.prelaunch_visits.findMany({
+            where: { visitor_id: { in: visitorIds } },
+            select: { visitor_id: true, page: true, created_at: true, utm_source: true, utm_campaign: true, utm_content: true },
+            orderBy: { created_at: 'asc' },
+          }),
+          prisma.prelaunch_exit_surveys.findMany({
+            where: { visitor_id: { in: visitorIds } },
+            select: { visitor_id: true, reason: true, text: true, created_at: true },
+          }),
+        ])
+      : [[], []];
+
+    const visitsBy = new Map<string, typeof visits>();
+    for (const v of visits) {
+      if (!visitsBy.has(v.visitor_id)) visitsBy.set(v.visitor_id, []);
+      visitsBy.get(v.visitor_id)!.push(v);
+    }
+    const exitBy = new Map(exits.map((e) => [e.visitor_id, e]));
+
+    res.json({
+      from: from.toISOString(),
+      to: to?.toISOString() ?? null,
+      leads: leads.map(({ visitor_id, ...l }) => {
+        const own = visitor_id ? visitsBy.get(visitor_id) ?? [] : [];
+        const first = own[0];
+        const exit = visitor_id ? exitBy.get(visitor_id) : undefined;
+        return {
+          ...l,
+          first_visit: first
+            ? {
+                created_at: first.created_at,
+                utm_source: first.utm_source,
+                utm_campaign: first.utm_campaign,
+                utm_content: first.utm_content,
+              }
+            : null,
+          pages: own.map((v) => v.page),
+          exit_survey: exit ? { reason: exit.reason, text: exit.text, created_at: exit.created_at } : null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('[prelaunch] leads', err);
     res.status(500).json({ error: 'internal' });
   }
 }
