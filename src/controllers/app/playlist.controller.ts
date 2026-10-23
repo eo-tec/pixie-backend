@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
 import { publishToMQTT } from '../../mqtt/client';
 import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
+import { DEFAULT_REVEAL_STYLE } from '../../config/revealStyles';
 
 // Helper: send config update to frame via MQTT after playlist changes
 async function notifyFramePlaylistChanged(pixieId: number) {
@@ -28,6 +29,7 @@ async function notifyFramePlaylistChanged(pixieId: number) {
     schedule_off_hour: pixie.schedule_off_hour ?? 22,
     schedule_off_minute: pixie.schedule_off_minute ?? 0,
     clock_enabled: pixie.clock_enabled ?? false,
+    reveal_style: pixie.reveal_style,
     timezone_offset: pixie.users?.timezone_offset ?? 0,
     has_owner: pixie.created_by !== null,
   }));
@@ -173,6 +175,7 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
       schedule_off_hour: updatedPixie?.schedule_off_hour ?? 22,
       schedule_off_minute: updatedPixie?.schedule_off_minute ?? 0,
       clock_enabled: updatedPixie?.clock_enabled ?? false,
+      reveal_style: updatedPixie?.reveal_style ?? DEFAULT_REVEAL_STYLE,
       timezone_offset: user?.timezone_offset ?? 0,
     }));
 

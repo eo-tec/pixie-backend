@@ -826,6 +826,7 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       schedule_off_hour: pixie.schedule_off_hour ?? 22,
       schedule_off_minute: pixie.schedule_off_minute ?? 0,
       clock_enabled: pixie.clock_enabled ?? false,
+      reveal_style: pixie.reveal_style,
       timezone_offset: pixie.users?.timezone_offset ?? 0,
       has_owner: pixie.created_by !== null
     });

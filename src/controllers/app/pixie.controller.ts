@@ -4,6 +4,7 @@ import prisma from '../../services/prisma';
 import { publishToMQTT, isFrameOnline, getFrameLastSeen } from '../../mqtt/client';
 import { pixie, FriendStatus } from "@prisma/client";
 import { effectiveBoolean, effectivePhotos } from '../../config/tierConfig';
+import { isRevealStyle, REVEAL_STYLES } from '../../config/revealStyles';
 
 /** Normaliza MAC a formato AA:BB:CC:DD:EE:FF (mayúsculas). Acepta con o sin ":". */
 function normalizeMac(raw: string): string | null {
@@ -270,6 +271,11 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
+    if (pixie.reveal_style !== undefined && !isRevealStyle(pixie.reveal_style)) {
+      res.status(400).json({ error: `reveal_style tiene que ser uno de: ${REVEAL_STYLES.join(', ')}` });
+      return;
+    }
+
     // Actualizar el pixie - filtrar solo campos actualizables
     const { id, created_at, created_by, mac, current_photo_id, current_song_id, current_song_name, tier, ...updateData } = pixie;
     const updatedPixie = await prisma.pixie.update({
@@ -297,6 +303,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: !!updatedPixie.created_by
     }));
@@ -404,6 +411,7 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: true
     }));
@@ -534,6 +542,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: true
     }));

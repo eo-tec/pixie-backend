@@ -116,6 +116,7 @@ model pixie {
   schedule_off_hour           Int?               @default(22)
   schedule_off_minute         Int?               @default(0)
   clock_enabled               Boolean            @default(false)
+  reveal_style                String             @default("polaroid")
   tier                        PixieTier          @default(free)
   mqtt_password               String?
   current_photo_id            Int?
