@@ -68,6 +68,12 @@ export async function createLead(req: Request, res: Response) {
     return;
   }
   try {
+    // Quien repite su email no es un lead nuevo: la landing solo avisa a
+    // Meta cuando `created` es true, para no inflar los leads de los anuncios.
+    const existing = await prisma.prelaunch_leads.findUnique({
+      where: { email },
+      select: { id: true },
+    });
     const lead = await prisma.prelaunch_leads.upsert({
       where: { email },
       create: {
@@ -83,6 +89,7 @@ export async function createLead(req: Request, res: Response) {
     res.json({
       token: lead.token,
       reserved: !!lead.reserved_at && !lead.refunded_at,
+      created: !existing,
     });
   } catch (err) {
     console.error('[prelaunch] lead', err);
