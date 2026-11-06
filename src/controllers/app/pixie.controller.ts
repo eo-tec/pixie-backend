@@ -303,6 +303,8 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      show_title: updatedPixie.show_title ?? true,
+      show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: !!updatedPixie.created_by
@@ -411,6 +413,8 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      show_title: updatedPixie.show_title ?? true,
+      show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: true
@@ -542,6 +546,8 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       schedule_off_hour: updatedPixie.schedule_off_hour,
       schedule_off_minute: updatedPixie.schedule_off_minute,
       clock_enabled: updatedPixie.clock_enabled,
+      show_title: updatedPixie.show_title ?? true,
+      show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
       timezone_offset: user?.timezone_offset ?? 0,
       has_owner: true

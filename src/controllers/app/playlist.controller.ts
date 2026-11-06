@@ -29,6 +29,8 @@ async function notifyFramePlaylistChanged(pixieId: number) {
     schedule_off_hour: pixie.schedule_off_hour ?? 22,
     schedule_off_minute: pixie.schedule_off_minute ?? 0,
     clock_enabled: pixie.clock_enabled ?? false,
+    show_title: pixie.show_title ?? true,
+    show_sender: pixie.show_sender ?? true,
     reveal_style: pixie.reveal_style,
     timezone_offset: pixie.users?.timezone_offset ?? 0,
     has_owner: pixie.created_by !== null,
@@ -175,6 +177,8 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
       schedule_off_hour: updatedPixie?.schedule_off_hour ?? 22,
       schedule_off_minute: updatedPixie?.schedule_off_minute ?? 0,
       clock_enabled: updatedPixie?.clock_enabled ?? false,
+      show_title: updatedPixie?.show_title ?? true,
+      show_sender: updatedPixie?.show_sender ?? true,
       reveal_style: updatedPixie?.reveal_style ?? DEFAULT_REVEAL_STYLE,
       timezone_offset: user?.timezone_offset ?? 0,
     }));
