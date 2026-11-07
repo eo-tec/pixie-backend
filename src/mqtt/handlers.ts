@@ -191,7 +191,7 @@ export async function handleRegisterRequest(mac: string): Promise<void> {
           name: "frame.",
           code: "0000",
           pictures_on_queue: 1,
-          tier: 'free'
+          tier: 'premium' // de momento todos los frames entran en premium (vídeos incluidos)
         }
       });
       // Create default playlist item

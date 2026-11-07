@@ -119,7 +119,7 @@ model pixie {
   show_title                  Boolean            @default(true)
   show_sender                 Boolean            @default(true)
   reveal_style                String             @default("polaroid")
-  tier                        PixieTier          @default(free)
+  tier                        PixieTier          @default(premium)
   mqtt_password               String?
   current_photo_id            Int?
   current_song_id             String?
