@@ -569,6 +569,18 @@ async function servePhotoFace(pixieId: number, pixie: any, responseTopic: string
     f.user_id_1 === pixie.created_by ? f.user_id_2 : f.user_id_1
   );
 
+  // Same exclusions as the app timeline (getPhotosFromUser): photos the owner
+  // hid ("Quitar del timeline"), flagged photos and photos from blocked users
+  // must not reach the frame either.
+  const blocks = await prisma.user_blocks.findMany({
+    where: {
+      OR: [{ blocker_id: pixie.created_by }, { blocked_id: pixie.created_by }],
+    },
+  });
+  const blockedUserIds = blocks.map((b: any) =>
+    b.blocker_id === pixie.created_by ? b.blocked_id : b.blocker_id
+  );
+
   const photos = await prisma.photos.findMany({
     where: {
       AND: [
@@ -582,7 +594,10 @@ async function servePhotoFace(pixieId: number, pixie: any, responseTopic: string
             }] : [])
           ]
         },
-        { deleted_at: null }
+        { deleted_at: null },
+        { is_flagged: false },
+        { hidden_by: { none: { user_id: pixie.created_by } } },
+        ...(blockedUserIds.length > 0 ? [{ user_id: { notIn: blockedUserIds } }] : [])
       ]
     },
     orderBy: { created_at: 'desc' }
