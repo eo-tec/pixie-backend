@@ -522,3 +522,31 @@ enum ReportStatus {
 
   @@schema("public")
 }
+
+// Pedidos de las unidades beta (Payment Links de Stripe). Los crea el webhook
+// de Stripe de la landing vía /admin/orders/beta; el email «pedido recibido»
+// sale una sola vez y el de «en camino» al marcarlo enviado.
+model beta_orders {
+  id                     Int       @id @default(autoincrement())
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  stripe_session_id      String    @unique
+  stripe_payment_id      String?
+  email                  String
+  name                   String?
+  phone                  String?
+  shipping               Json?
+  country                String?
+  quantity               Int       @default(1)
+  amount_cents           Int?
+  currency               String?
+  locale                 String    @default("en")
+  status                 String    @default("received")
+  tracking_number        String?
+  tracking_url           String?
+  shipped_at             DateTime? @db.Timestamptz(6)
+  received_email_sent_at DateTime? @db.Timestamptz(6)
+  shipped_email_sent_at  DateTime? @db.Timestamptz(6)
+
+  @@index([status, created_at])
+  @@schema("public")
+}
