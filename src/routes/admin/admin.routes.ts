@@ -12,6 +12,11 @@ import {
   getStats,
   listLeads,
 } from '../../controllers/admin/prelaunch.controller';
+import {
+  createBetaOrder,
+  listBetaOrders,
+  markBetaOrderShipped,
+} from '../../controllers/admin/orders.controller';
 
 export const adminRouter = Router();
 
@@ -32,3 +37,8 @@ adminRouter.post('/prelaunch/survey', saveSurvey);
 adminRouter.post('/prelaunch/exit', saveExitSurvey);
 adminRouter.post('/prelaunch/reservation', recordReservation);
 adminRouter.post('/prelaunch/refund', recordRefund);
+
+// Pedidos de unidades beta (ver orders.controller.ts)
+adminRouter.post('/orders/beta', createBetaOrder);
+adminRouter.get('/orders/beta', listBetaOrders);
+adminRouter.post('/orders/beta/:id/shipped', markBetaOrderShipped);
