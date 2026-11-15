@@ -135,6 +135,7 @@ model pixie {
   drawing_sessions            drawing_sessions[]
   playlist_items              playlist_items[]
   boot_events                 boot_events[]
+  unit                        units?
 
   @@schema("public")
 }
@@ -237,6 +238,7 @@ model public_users {
   reports_sent            content_reports[]        @relation("ReportsSent")
   reports_received        content_reports[]        @relation("ReportsReceived")
   push_tokens             push_tokens[]
+  customers               customers[]
 
   @@map("users")
   @@schema("public")
@@ -430,6 +432,7 @@ model prelaunch_leads {
   stripe_session_id String?                      @unique
   stripe_payment_id String?
   surveys           prelaunch_survey_responses[]
+  customer          customers?
 
   @@index([created_at])
   @@schema("public")
@@ -546,7 +549,200 @@ model beta_orders {
   shipped_at             DateTime? @db.Timestamptz(6)
   received_email_sent_at DateTime? @db.Timestamptz(6)
   shipped_email_sent_at  DateTime? @db.Timestamptz(6)
+  crm_order              orders?
 
   @@index([status, created_at])
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// CRM / ERP interno (/admin de la landing). Clientes, pedidos, unidades con su
+// número de serie y stock de piezas con la receta (BOM) de cada versión.
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  pendiente
+  fabricado
+  qc
+  enviado
+  recibido
+  incidencia
+
+  @@schema("public")
+}
+
+// Una persona que nos compra (o que queremos que nos compre). El email es la
+// clave: el webhook de Stripe la crea o la completa al pagar.
+model customers {
+  id             Int               @id @default(autoincrement())
+  created_at     DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+  email          String            @unique
+  name           String?
+  phone          String?
+  country        String?
+  city           String?
+  language       String?
+  /// lead | cliente | beta_tester | vip | perdido
+  status         String            @default("cliente")
+  tags           String[]          @default([])
+  /// De dónde viene en palabras: «Meta Ads», «Reddit», «Amigo de Tavis»...
+  origin         String?
+  utm_source     String?
+  utm_medium     String?
+  utm_campaign   String?
+  utm_content    String?
+  utm_term       String?
+  /// Texto libre de la ficha (la «página» del cliente)
+  notes          String?
+  lead_id        Int?              @unique
+  public_user_id Int?
+  lead           prelaunch_leads?  @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  public_user    public_users?     @relation(fields: [public_user_id], references: [id], onDelete: SetNull)
+  events         customer_events[]
+  orders         orders[]
+
+  @@index([status])
+  @@schema("public")
+}
+
+// Timeline del cliente: notas, emails, llamadas y lo que pasa con sus pedidos.
+model customer_events {
+  id          Int       @id @default(autoincrement())
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  customer_id Int
+  /// note | email | call | order | system
+  type        String    @default("note")
+  title       String?
+  body        String?
+  author      String    @default("Álvaro")
+  order_id    Int?
+  customer    customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  order       orders?   @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  @@index([customer_id, created_at])
+  @@schema("public")
+}
+
+// Versión de hardware que se vende: «beta» ahora, luego una por revisión.
+model frame_versions {
+  id         Int         @id @default(autoincrement())
+  created_at DateTime    @default(now()) @db.Timestamptz(6)
+  name       String      @unique
+  hw_version String?
+  notes      String?
+  active     Boolean     @default(true)
+  bom        bom_items[]
+  orders     orders[]
+  units      units[]
+
+  @@schema("public")
+}
+
+model parts {
+  id         Int               @id @default(autoincrement())
+  created_at DateTime          @default(now()) @db.Timestamptz(6)
+  name       String            @unique
+  unit       String            @default("ud")
+  stock_qty  Int               @default(0)
+  min_qty    Int               @default(0)
+  /// Último recuento físico. null = sin dato (stock_qty no es fiable)
+  counted_at DateTime?         @db.Timestamptz(6)
+  supplier   String?
+  notes      String?
+  bom        bom_items[]
+  movements  stock_movements[]
+
+  @@schema("public")
+}
+
+// Receta de cada versión: cuántas piezas de cada tipo lleva un Frame.
+model bom_items {
+  id         Int            @id @default(autoincrement())
+  version_id Int
+  part_id    Int
+  qty        Int            @default(1)
+  version    frame_versions @relation(fields: [version_id], references: [id], onDelete: Cascade)
+  part       parts          @relation(fields: [part_id], references: [id], onDelete: Restrict)
+
+  @@unique([version_id, part_id])
+  @@schema("public")
+}
+
+// Cada cambio de stock queda apuntado: compras (+), fabricación (−), ajustes.
+model stock_movements {
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  part_id    Int
+  delta      Int
+  /// compra | fabricacion | devolucion | ajuste
+  reason     String
+  note       String?
+  author     String   @default("Álvaro")
+  order_id   Int?
+  part       parts    @relation(fields: [part_id], references: [id], onDelete: Cascade)
+  order      orders?  @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  @@index([part_id, created_at])
+  @@schema("public")
+}
+
+model orders {
+  id                Int               @id @default(autoincrement())
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+  customer_id       Int
+  version_id        Int
+  quantity          Int               @default(1)
+  status            OrderStatus       @default(pendiente)
+  amount_cents      Int?
+  currency          String?
+  paid_at           DateTime?         @db.Timestamptz(6)
+  /// Pedido de Stripe del que sale (webhook de la landing)
+  beta_order_id     Int?              @unique
+  shipping          Json?
+  tracking_number   String?
+  tracking_url      String?
+  notes             String?
+  incidence_note    String?
+  /// Fecha prevista de envío
+  ship_by           DateTime?         @db.Date
+  fabricado_at      DateTime?         @db.Timestamptz(6)
+  qc_at             DateTime?         @db.Timestamptz(6)
+  enviado_at        DateTime?         @db.Timestamptz(6)
+  recibido_at       DateTime?         @db.Timestamptz(6)
+  incidencia_at     DateTime?         @db.Timestamptz(6)
+  /// Cuándo se descontaron las piezas del stock (null = aún comprometidas)
+  parts_deducted_at DateTime?         @db.Timestamptz(6)
+  customer          customers         @relation(fields: [customer_id], references: [id], onDelete: Restrict)
+  version           frame_versions    @relation(fields: [version_id], references: [id], onDelete: Restrict)
+  beta_order        beta_orders?      @relation(fields: [beta_order_id], references: [id], onDelete: SetNull)
+  units             units[]
+  events            customer_events[]
+  movements         stock_movements[]
+
+  @@index([status, created_at])
+  @@schema("public")
+}
+
+// Cada Frame físico, con su número de serie propio (FR-0001), no la MAC.
+model units {
+  id               Int            @id @default(autoincrement())
+  created_at       DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime       @default(now()) @updatedAt @db.Timestamptz(6)
+  sn               String         @unique
+  mac              String?        @unique
+  version_id       Int
+  firmware_version Int?           @db.SmallInt
+  /// montaje | qc_ok | enviada | activa | rma | baja
+  status           String         @default("montaje")
+  order_id         Int?
+  pixie_id         Int?           @unique
+  notes            String?
+  version          frame_versions @relation(fields: [version_id], references: [id], onDelete: Restrict)
+  order            orders?        @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  pixie            pixie?         @relation(fields: [pixie_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
   @@schema("public")
 }

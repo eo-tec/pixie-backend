@@ -12,6 +12,7 @@ import { generateStocksImage } from '../faces/stocks';
 import { generateDayNightImage } from '../faces/daynight';
 import { createDeviceClient } from './dynSec';
 import { effectiveBoolean, effectivePhotos } from '../config/tierConfig';
+import { onFrameOnline } from '../services/crm.service';
 
 const FRAME_SIZE_RGB565 = 64 * 64 * 2; // 8192 bytes per frame
 
@@ -713,6 +714,11 @@ export async function handleOtaRequest(pixieId: number, hwVersion?: string, curr
         data: reported,
       }).catch((e) => console.warn(`[MQTT:ota] No se pudo guardar versión de frame ${pixieId}:`, e));
     }
+
+    // CRM: el frame pide OTA al arrancar = está conectado. Actualiza el
+    // firmware de su unidad y, si su pedido estaba «enviado», lo pasa a
+    // «recibido». No bloquea ni lanza (ver onFrameOnline).
+    void onFrameOnline(pixieId, reported.firmware_version);
 
     const version = await prisma.code_versions.findFirst({
       where: { hw_version: hw },

@@ -10,6 +10,7 @@ import {
   Locale,
   OrderForEmail,
 } from '../../services/beta-order-emails';
+import { changeOrderStatus, syncBetaOrder } from '../../services/crm.service';
 
 // Pedidos de unidades beta. El webhook de Stripe de la landing (getframe64.com)
 // llama a POST /admin/orders/beta con los datos del checkout de un Payment Link
@@ -164,6 +165,14 @@ export async function createBetaOrder(req: Request, res: Response) {
     return;
   }
 
+  // CRM: cliente + pedido en «pendiente». Idempotente (también en reintentos)
+  // y nunca rompe el webhook: si falla, se recupera con POST /admin/crm/sync.
+  try {
+    await syncBetaOrder(order);
+  } catch (err) {
+    console.error('[orders] crm sync', order.id, err);
+  }
+
   try {
     const mail = await sendOnce(
       order.id,
@@ -198,39 +207,32 @@ export async function listBetaOrders(req: Request, res: Response) {
   }
 }
 
+export interface ShipResult {
+  httpStatus: number;
+  body: Record<string, unknown>;
+}
+
 /**
- * Marca un pedido como enviado con el número de Correos y manda el email
- * «en camino». Repetirlo no reenvía el email salvo con `force: true` (por
- * ejemplo, si el número estaba mal).
+ * Marca un pedido beta como enviado con el número de Correos y manda el email
+ * «en camino». Repetirlo no reenvía el email salvo con `force`. Lo usan este
+ * endpoint y el CRM al mover un pedido a «enviado».
  */
-export async function markBetaOrderShipped(req: Request, res: Response) {
-  const id = intOrUndefined(req.params.id);
-  const trackingNumber = str(req.body?.tracking_number, 64)?.replace(/\s+/g, '').toUpperCase();
-  const force = req.body?.force === true;
-  if (!id) {
-    res.status(400).json({ error: 'invalid id' });
-    return;
-  }
+export async function shipBetaOrder(id: number, rawTracking?: string, force = false): Promise<ShipResult> {
+  const trackingNumber = rawTracking?.replace(/\s+/g, '').toUpperCase() || undefined;
 
   let order: Order | null;
   try {
     order = await prisma.beta_orders.findUnique({ where: { id } });
   } catch (err) {
     console.error('[orders] shipped lookup', err);
-    res.status(500).json({ error: 'internal' });
-    return;
+    return { httpStatus: 500, body: { error: 'internal' } };
   }
-  if (!order) {
-    res.status(404).json({ error: 'order not found' });
-    return;
-  }
+  if (!order) return { httpStatus: 404, body: { error: 'order not found' } };
   if (!trackingNumber && !order.tracking_number) {
-    res.status(400).json({ error: 'tracking_number is required' });
-    return;
+    return { httpStatus: 400, body: { error: 'tracking_number is required' } };
   }
   if (order.shipped_email_sent_at && !force) {
-    res.json({ ok: true, id, email: 'already', order });
-    return;
+    return { httpStatus: 200, body: { ok: true, id, email: 'already', order } };
   }
 
   const number = trackingNumber ?? order.tracking_number!;
@@ -246,20 +248,47 @@ export async function markBetaOrderShipped(req: Request, res: Response) {
     });
   } catch (err) {
     console.error('[orders] shipped update', err);
-    res.status(500).json({ error: 'internal' });
-    return;
+    return { httpStatus: 500, body: { error: 'internal' } };
   }
 
   try {
     const saved = order;
     const mail = await sendOnce(id, 'shipped_email_sent_at', async () => saved, shippedEmail, force);
     if (mail === 'not_configured') {
-      res.status(503).json({ error: 'SMTP not configured: marked shipped, email not sent', order });
-      return;
+      return { httpStatus: 503, body: { error: 'SMTP not configured: marked shipped, email not sent', order } };
     }
-    res.json({ ok: true, id, email: mail, order });
+    return { httpStatus: 200, body: { ok: true, id, email: mail, order } };
   } catch (err) {
     console.error('[orders] shipped email', id, err);
-    res.status(502).json({ error: 'marked shipped, email failed: call again to retry', order });
+    return { httpStatus: 502, body: { error: 'marked shipped, email failed: call again to retry', order } };
   }
+}
+
+/** POST /admin/orders/beta/:id/shipped (ver shipBetaOrder). */
+export async function markBetaOrderShipped(req: Request, res: Response) {
+  const id = intOrUndefined(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const result = await shipBetaOrder(id, str(req.body?.tracking_number, 64), req.body?.force === true);
+
+  // CRM: que el pedido también figure como enviado (sin repetir el email).
+  if (result.httpStatus < 500 && result.httpStatus !== 404 && result.httpStatus !== 400) {
+    try {
+      const crm = await prisma.orders.findUnique({ where: { beta_order_id: id } });
+      const beta = result.body.order as Order | undefined;
+      if (crm && crm.status !== 'enviado' && crm.status !== 'recibido') {
+        await changeOrderStatus(crm.id, {
+          status: 'enviado',
+          tracking_number: beta?.tracking_number ?? undefined,
+          tracking_url: beta?.tracking_url ?? undefined,
+          force: true,
+        });
+      }
+    } catch (err) {
+      console.error('[orders] crm shipped sync', id, err);
+    }
+  }
+  res.status(result.httpStatus).json(result.body);
 }
