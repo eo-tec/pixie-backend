@@ -463,7 +463,11 @@ export const createMovement = handle(async (req) => {
   const reason = str(req.body?.reason, 16) ?? 'compra';
   if (!partId || !delta) throw new CrmError(400, 'Hacen falta pieza y cantidad');
   if (!REASONS.has(reason)) throw new CrmError(400, 'Motivo no válido');
-  return addStockMovement({ part_id: partId, delta, reason, note: str(req.body?.note, 500) });
+  const note = str(req.body?.note, 500);
+  // Pérdida de material (piezas rotas, fallos): siempre resta y dice qué pasó.
+  if (reason === 'merma' && delta > 0) throw new CrmError(400, 'Una merma tiene que restar (cantidad negativa)');
+  if (reason === 'merma' && !note) throw new CrmError(400, 'Explica qué pasó con el material perdido');
+  return addStockMovement({ part_id: partId, delta, reason, note });
 });
 
 export const listVersions = handle(async () => ({
@@ -493,4 +497,140 @@ export const setBom = handle(async (req) => {
     prisma.bom_items.createMany({ data: clean.map((i) => ({ ...i, version_id: versionId })) }),
   ]);
   return { bom: await prisma.bom_items.findMany({ where: { version_id: versionId }, include: { part: true } }) };
+});
+
+// ---------------------------------------------------------------------------
+// Gasto en anuncios (Meta), para el coste por email y por reserva de la
+// pantalla Validación. Lo carga un agente cada mañana: PUT idempotente.
+// ---------------------------------------------------------------------------
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** "YYYY-MM-DD" válido → Date a medianoche UTC (columna DATE); si no, undefined. */
+function day(value: unknown): Date | undefined {
+  if (typeof value !== 'string' || !DAY_RE.test(value.trim())) return undefined;
+  const d = new Date(`${value.trim()}T00:00:00Z`);
+  return isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value.trim() ? undefined : d;
+}
+
+/**
+ * Clave del anuncio a partir del nombre de Meta: lo que va antes de « | »,
+ * en minúsculas y solo letras y números. «Test4-5 | 4:5 feed» → test45,
+ * «Test7 | golf video» → test7 (el utm_content de esos anuncios).
+ */
+export function adKeyFromName(name: string): string {
+  const k = name.split('|')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+  return k || 'other';
+}
+
+type SpendRow = {
+  date: Date;
+  ad_key: string;
+  ad_name: string | null;
+  campaign: string | null;
+  spend_cents: number;
+  currency: string;
+  impressions: number | null;
+  clicks: number | null;
+  meta_leads: number | null;
+};
+
+const optInt = (v: unknown): number | null | undefined => {
+  if (v === undefined || v === null || v === '') return null;
+  const n = int(v);
+  return n !== undefined && n >= 0 ? n : undefined;
+};
+
+function parseSpendRow(r: any): { row?: SpendRow; error?: string } {
+  if (!r || typeof r !== 'object') return { error: 'no es un objeto' };
+  const date = day(r.date);
+  if (!date) return { error: 'date tiene que ser YYYY-MM-DD (día en hora de Madrid)' };
+  const adName = str(r.ad_name, 300) ?? null;
+  const rawKey = str(r.ad_key ?? r.utm_content, 120);
+  const ad_key = rawKey ? rawKey.toLowerCase() : adName ? adKeyFromName(adName) : undefined;
+  if (!ad_key) return { error: 'falta ad_key (o ad_name)' };
+  // spend_cents (entero) o, si no, spend en unidades (12.34).
+  let spend_cents = int(r.spend_cents);
+  if (spend_cents === undefined && r.spend !== undefined && r.spend !== null && r.spend !== '') {
+    const n = typeof r.spend === 'string' ? Number(r.spend.replace(',', '.')) : r.spend;
+    if (typeof n === 'number' && Number.isFinite(n)) spend_cents = Math.round(n * 100);
+  }
+  if (spend_cents === undefined || spend_cents < 0) return { error: 'spend_cents tiene que ser un entero >= 0' };
+  const currency = (str(r.currency, 3) ?? 'eur').toLowerCase();
+  if (!/^[a-z]{3}$/.test(currency)) return { error: 'currency no válida' };
+  const impressions = optInt(r.impressions);
+  const clicks = optInt(r.clicks);
+  const meta_leads = optInt(r.meta_leads);
+  if (impressions === undefined || clicks === undefined || meta_leads === undefined) {
+    return { error: 'impressions, clicks y meta_leads tienen que ser enteros >= 0 o null' };
+  }
+  return {
+    row: { date, ad_key, ad_name: adName, campaign: str(r.campaign, 300) ?? null, spend_cents, currency, impressions, clicks, meta_leads },
+  };
+}
+
+const sumNull = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+
+/**
+ * PUT /admin/crm/ad-spend  { rows: [{ date, ad_key | ad_name, spend_cents, ... }] }
+ * Upsert por (date, ad_key): repetir la carga deja lo mismo. Si en el mismo
+ * envío vienen varias filas con el mismo día y clave (p. ej. varios anuncios
+ * en 'other'), se suman antes de guardar. Valida todo antes de escribir nada.
+ */
+export const putAdSpend = handle(async (req) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+  if (!rows) throw new CrmError(400, 'rows debe ser una lista');
+  if (rows.length > 1000) throw new CrmError(400, 'Máximo 1000 filas por envío');
+
+  const errors: { index: number; error: string }[] = [];
+  const merged = new Map<string, SpendRow>();
+  rows.forEach((r: unknown, index: number) => {
+    const { row, error } = parseSpendRow(r);
+    if (!row) return errors.push({ index, error: error! });
+    const k = `${row.date.toISOString().slice(0, 10)}|${row.ad_key}`;
+    const prev = merged.get(k);
+    if (!prev) {
+      merged.set(k, row);
+      return;
+    }
+    if (prev.currency !== row.currency) return errors.push({ index, error: `moneda distinta a otra fila de ${k}` });
+    merged.set(k, {
+      ...prev,
+      ad_name: [prev.ad_name, row.ad_name].filter(Boolean).join(' + ') || null,
+      campaign: prev.campaign ?? row.campaign,
+      spend_cents: prev.spend_cents + row.spend_cents,
+      impressions: sumNull(prev.impressions, row.impressions),
+      clicks: sumNull(prev.clicks, row.clicks),
+      meta_leads: sumNull(prev.meta_leads, row.meta_leads),
+    });
+  });
+  if (errors.length) throw new CrmError(400, 'Filas no válidas', errors);
+
+  const list = [...merged.values()];
+  await prisma.$transaction(
+    list.map(({ date, ad_key, ...data }) =>
+      prisma.ad_spend.upsert({
+        where: { date_ad_key: { date, ad_key } },
+        create: { date, ad_key, ...data },
+        update: data,
+      }),
+    ),
+  );
+  return { ok: true, upserted: list.length, received: rows.length };
+});
+
+/** GET /admin/crm/ad-spend?from=YYYY-MM-DD&to=YYYY-MM-DD (ambos incluidos; por defecto, 30 días). */
+export const getAdSpend = handle(async (req) => {
+  const to = req.query.to ? day(req.query.to) : day(new Date().toISOString().slice(0, 10));
+  const from = req.query.from ? day(req.query.from) : to && new Date(to.getTime() - 30 * 864e5);
+  if (!from || !to) throw new CrmError(400, 'from y to tienen que ser YYYY-MM-DD');
+  const rows = await prisma.ad_spend.findMany({
+    where: { date: { gte: from, lte: to } },
+    orderBy: [{ date: 'asc' }, { ad_key: 'asc' }],
+  });
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+    rows: rows.map((r) => ({ ...r, date: r.date.toISOString().slice(0, 10) })),
+  };
 });

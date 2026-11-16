@@ -71,3 +71,7 @@ adminRouter.post('/crm/stock/movements', crm.createMovement);
 adminRouter.get('/crm/versions', crm.listVersions);
 adminRouter.post('/crm/versions', crm.createVersion);
 adminRouter.put('/crm/versions/:id/bom', crm.setBom);
+
+// Gasto diario en anuncios (Meta) por anuncio: lo sube un agente cada mañana
+adminRouter.get('/crm/ad-spend', crm.getAdSpend);
+adminRouter.put('/crm/ad-spend', crm.putAdSpend);

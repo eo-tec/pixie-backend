@@ -746,3 +746,26 @@ model units {
   @@index([order_id])
   @@schema("public")
 }
+
+// Gasto en anuncios (Meta) por día y anuncio, para el coste por email y por
+// reserva en /admin/validacion. Lo carga un agente cada mañana con un upsert
+// idempotente. `date` es el día cerrado en hora de Madrid; `ad_key` casa con
+// el utm_content de los leads (test6, test45...) o es 'other'.
+model ad_spend {
+  id          Int      @id @default(autoincrement())
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  date        DateTime @db.Date
+  ad_key      String
+  ad_name     String?
+  campaign    String?
+  spend_cents Int
+  currency    String   @default("eur")
+  impressions Int?
+  clicks      Int?
+  meta_leads  Int?
+
+  @@unique([date, ad_key])
+  @@index([date])
+  @@schema("public")
+}
