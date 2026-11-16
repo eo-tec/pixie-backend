@@ -533,6 +533,8 @@ type SpendRow = {
   impressions: number | null;
   clicks: number | null;
   meta_leads: number | null;
+  /** ISO-2 en mayúsculas; '' = sin desglose por país */
+  country: string;
 };
 
 const optInt = (v: unknown): number | null | undefined => {
@@ -564,18 +566,38 @@ function parseSpendRow(r: any): { row?: SpendRow; error?: string } {
   if (impressions === undefined || clicks === undefined || meta_leads === undefined) {
     return { error: 'impressions, clicks y meta_leads tienen que ser enteros >= 0 o null' };
   }
+  // country opcional: ISO-2 («es», «US»). Vacío o ausente = sin país.
+  let country = '';
+  if (r.country !== undefined && r.country !== null && r.country !== '') {
+    if (typeof r.country !== 'string' || !/^[a-z]{2}$/i.test(r.country.trim())) {
+      return { error: 'country tiene que ser un código ISO-2 (ES, US...) o vacío' };
+    }
+    country = r.country.trim().toUpperCase();
+  }
   return {
-    row: { date, ad_key, ad_name: adName, campaign: str(r.campaign, 300) ?? null, spend_cents, currency, impressions, clicks, meta_leads },
+    row: { date, ad_key, ad_name: adName, campaign: str(r.campaign, 300) ?? null, spend_cents, currency, impressions, clicks, meta_leads, country },
   };
 }
 
 const sumNull = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
 
 /**
- * PUT /admin/crm/ad-spend  { rows: [{ date, ad_key | ad_name, spend_cents, ... }] }
- * Upsert por (date, ad_key): repetir la carga deja lo mismo. Si en el mismo
- * envío vienen varias filas con el mismo día y clave (p. ej. varios anuncios
- * en 'other'), se suman antes de guardar. Valida todo antes de escribir nada.
+ * PUT /admin/crm/ad-spend
+ *   { rows: [{ date, ad_key | utm_content | ad_name, ad_name?, campaign?,
+ *              spend_cents | spend, currency?, impressions?, clicks?,
+ *              meta_leads?, country? }] }
+ *
+ * El envío SUSTITUYE DÍAS COMPLETOS: para cada `date` que aparece en `rows`
+ * se borran todas las filas que había de ese día (con o sin país) y se
+ * escriben las nuevas, en una sola transacción. Los días que no vienen no se
+ * tocan. Así repetir la carga deja lo mismo, y pasar un día de «sin país» a
+ * «por país» (o al revés) no deja filas viejas que sumarían dos veces.
+ * Consecuencia: si se manda un día, hay que mandar todos sus anuncios.
+ *
+ * Dentro de un mismo día todas las filas van con país o todas sin él
+ * (country vacío): mezclar se rechaza, porque el total del día sería ambiguo.
+ * Varias filas con el mismo (date, ad_key, country) se suman. Valida todo
+ * antes de escribir nada.
  */
 export const putAdSpend = handle(async (req) => {
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
@@ -587,7 +609,7 @@ export const putAdSpend = handle(async (req) => {
   rows.forEach((r: unknown, index: number) => {
     const { row, error } = parseSpendRow(r);
     if (!row) return errors.push({ index, error: error! });
-    const k = `${row.date.toISOString().slice(0, 10)}|${row.ad_key}`;
+    const k = `${row.date.toISOString().slice(0, 10)}|${row.ad_key}|${row.country}`;
     const prev = merged.get(k);
     if (!prev) {
       merged.set(k, row);
@@ -607,16 +629,33 @@ export const putAdSpend = handle(async (req) => {
   if (errors.length) throw new CrmError(400, 'Filas no válidas', errors);
 
   const list = [...merged.values()];
-  await prisma.$transaction(
-    list.map(({ date, ad_key, ...data }) =>
-      prisma.ad_spend.upsert({
-        where: { date_ad_key: { date, ad_key } },
-        create: { date, ad_key, ...data },
-        update: data,
-      }),
-    ),
-  );
-  return { ok: true, upserted: list.length, received: rows.length };
+  const days = new Map<string, Date>();
+  const withCountry = new Map<string, { yes: boolean; no: boolean }>();
+  for (const r of list) {
+    const d = r.date.toISOString().slice(0, 10);
+    days.set(d, r.date);
+    const w = withCountry.get(d) ?? { yes: false, no: false };
+    if (r.country) w.yes = true;
+    else w.no = true;
+    withCountry.set(d, w);
+  }
+  const mixed = [...withCountry.entries()].filter(([, w]) => w.yes && w.no).map(([d]) => d);
+  if (mixed.length) {
+    throw new CrmError(400, `Días con filas con y sin país a la vez: ${mixed.join(', ')}. Manda cada día entero por país o entero sin país.`);
+  }
+
+  const [deleted] = await prisma.$transaction([
+    prisma.ad_spend.deleteMany({ where: { date: { in: [...days.values()] } } }),
+    prisma.ad_spend.createMany({ data: list }),
+  ]);
+  return {
+    ok: true,
+    days: [...days.keys()].sort(),
+    replaced: deleted.count,
+    written: list.length,
+    upserted: list.length, // nombre antiguo de `written`, por compatibilidad
+    received: rows.length,
+  };
 });
 
 /** GET /admin/crm/ad-spend?from=YYYY-MM-DD&to=YYYY-MM-DD (ambos incluidos; por defecto, 30 días). */
@@ -626,7 +665,7 @@ export const getAdSpend = handle(async (req) => {
   if (!from || !to) throw new CrmError(400, 'from y to tienen que ser YYYY-MM-DD');
   const rows = await prisma.ad_spend.findMany({
     where: { date: { gte: from, lte: to } },
-    orderBy: [{ date: 'asc' }, { ad_key: 'asc' }],
+    orderBy: [{ date: 'asc' }, { ad_key: 'asc' }, { country: 'asc' }],
   });
   return {
     from: from.toISOString().slice(0, 10),

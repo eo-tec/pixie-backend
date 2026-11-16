@@ -402,6 +402,8 @@ model prelaunch_visits {
   utm_source   String?
   utm_campaign String?
   utm_content  String?
+  /// País (ISO-2) de la IP al llegar, con geoip-lite. La IP no se guarda.
+  country      String?
 
   @@unique([visitor_id, page])
   @@index([created_at])
@@ -431,6 +433,8 @@ model prelaunch_leads {
   currency          String?
   stripe_session_id String?                      @unique
   stripe_payment_id String?
+  /// País (ISO-2) de la IP al apuntarse, con geoip-lite. La IP no se guarda.
+  country           String?
   surveys           prelaunch_survey_responses[]
   customer          customers?
 
@@ -764,8 +768,10 @@ model ad_spend {
   impressions Int?
   clicks      Int?
   meta_leads  Int?
+  /// País (ISO-2) del desglose de Meta; '' = sin país (total del anuncio ese día)
+  country     String   @default("")
 
-  @@unique([date, ad_key])
+  @@unique([date, ad_key, country])
   @@index([date])
   @@schema("public")
 }

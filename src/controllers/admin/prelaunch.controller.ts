@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../services/prisma';
+import { countryFromIp } from '../../services/geoip';
 
 // Validación de demanda tipo Prelaunch.com. La landing (frame64.fun) es la
 // única que llama aquí, desde su servidor y con la clave de admin, después
@@ -28,6 +29,17 @@ function utmFields(utm: unknown) {
   };
 }
 
+/**
+ * País del visitante. Quien llama aquí es el servidor de la landing, así que
+ * la IP de la petición es la suya: la del visitante llega en X-Visitor-Ip
+ * (solo se acepta porque estas rutas exigen la clave de admin). Se convierte
+ * a país y la IP se descarta.
+ */
+function visitorCountry(req: Request): string | null {
+  const ip = req.headers['x-visitor-ip'];
+  return countryFromIp(Array.isArray(ip) ? ip[0] : ip);
+}
+
 /** Una visita por visitante y página: recargar no infla el embudo. */
 export async function recordVisit(req: Request, res: Response) {
   const visitorId = str(req.body?.visitor_id, 64);
@@ -47,6 +59,7 @@ export async function recordVisit(req: Request, res: Response) {
         utm_source: utm.utm_source,
         utm_campaign: utm.utm_campaign,
         utm_content: utm.utm_content,
+        country: visitorCountry(req),
       },
       update: {},
     });
@@ -82,6 +95,7 @@ export async function createLead(req: Request, res: Response) {
         lang: str(req.body?.lang, 8),
         source: str(req.body?.source, 64),
         ...utmFields(req.body?.utm),
+        country: visitorCountry(req),
       },
       update: {},
       select: { token: true, reserved_at: true, refunded_at: true },
@@ -261,6 +275,45 @@ export async function recordRefund(req: Request, res: Response) {
   }
 }
 
+/**
+ * País de respaldo para los leads sin país de IP (los anteriores a guardarlo):
+ * el de su ficha del CRM o, si no, el de su pedido beta de Stripe. Solo se
+ * calcula para la respuesta; no se escribe en prelaunch_leads.
+ */
+async function fallbackCountries(leads: { id: number; email: string; country: string | null }[]) {
+  const missing = leads.filter((l) => !l.country);
+  const out = new Map<number, string>();
+  if (!missing.length) return out;
+  const [customers, orders] = await Promise.all([
+    prisma.customers.findMany({
+      where: { lead_id: { in: missing.map((l) => l.id) }, country: { not: null } },
+      select: { lead_id: true, country: true },
+    }),
+    prisma.beta_orders.findMany({
+      where: { email: { in: missing.map((l) => l.email), mode: 'insensitive' }, country: { not: null } },
+      select: { email: true, country: true },
+      orderBy: { created_at: 'desc' },
+    }),
+  ]);
+  const byLead = new Map(customers.map((c) => [c.lead_id, c.country!.toUpperCase()]));
+  const byEmail = new Map<string, string>();
+  for (const o of orders) if (!byEmail.has(o.email.toLowerCase())) byEmail.set(o.email.toLowerCase(), o.country!.toUpperCase());
+  for (const l of missing) {
+    const c = byLead.get(l.id) ?? byEmail.get(l.email.toLowerCase());
+    if (c) out.set(l.id, c);
+  }
+  return out;
+}
+
+type CountryRow = {
+  country: string | null;
+  visits_home: number;
+  visits_reserve: number;
+  leads: number;
+  reservations: number;
+  refunded: number;
+};
+
 type Row = {
   key: string;
   visits_home: number;
@@ -309,7 +362,7 @@ export async function getStats(req: Request, res: Response) {
   try {
     const [visits, leads, exits] = await Promise.all([
       prisma.prelaunch_visits.groupBy({
-        by: ['page', 'utm_content'],
+        by: ['page', 'utm_content', 'country'],
         where: { created_at },
         _count: { _all: true },
       }),
@@ -320,6 +373,9 @@ export async function getStats(req: Request, res: Response) {
           OR: [{ source: null }, { source: { notIn: ['internal', 'bot'] } }],
         },
         select: {
+          id: true,
+          email: true,
+          country: true,
           created_at: true,
           lang: true,
           source: true,
@@ -347,10 +403,29 @@ export async function getStats(req: Request, res: Response) {
       return byAd.get(key)!;
     };
 
+    // Por país (de la IP; en leads antiguos, el de Stripe/CRM). null = sin dato.
+    const byCountry = new Map<string, CountryRow>();
+    const crow = (country: string | null) => {
+      const key = country ?? '';
+      if (!byCountry.has(key)) {
+        byCountry.set(key, { country, visits_home: 0, visits_reserve: 0, leads: 0, reservations: 0, refunded: 0 });
+      }
+      return byCountry.get(key)!;
+    };
+
     for (const v of visits) {
       const field = v.page === 'reserve' ? 'visits_reserve' : 'visits_home';
       total[field] += v._count._all;
       row(v.utm_content)[field] += v._count._all;
+      crow(v.country)[field] += v._count._all;
+    }
+
+    const fallback = await fallbackCountries(leads);
+    for (const l of leads) {
+      const c = crow(l.country ?? fallback.get(l.id) ?? null);
+      c.leads++;
+      if (l.reserved_at) c.reservations++;
+      if (l.reserved_at && l.refunded_at) c.refunded++;
     }
 
     const surveys: { kind: string; answers: unknown; created_at: Date; utm_content: string | null }[] = [];
@@ -375,6 +450,7 @@ export async function getStats(req: Request, res: Response) {
       exits,
       recovered,
       by_ad: [...byAd.values()].sort((a, b) => b.leads - a.leads),
+      by_country: [...byCountry.values()].sort((a, b) => b.leads - a.leads || b.visits_home - a.visits_home),
       surveys,
     });
   } catch (err) {
@@ -420,10 +496,12 @@ export async function listLeads(req: Request, res: Response) {
         amount_cents: true,
         currency: true,
         stripe_payment_id: true,
+        country: true,
         surveys: { select: { kind: true, answers: true, created_at: true } },
       },
       orderBy: { created_at: 'desc' },
     });
+    const fallback = await fallbackCountries(leads);
 
     const visitorIds = [...new Set(leads.map((l) => l.visitor_id).filter((v): v is string => !!v))];
     const [visits, exits] = visitorIds.length
@@ -454,8 +532,12 @@ export async function listLeads(req: Request, res: Response) {
         const own = visitor_id ? visitsBy.get(visitor_id) ?? [] : [];
         const first = own[0];
         const exit = visitor_id ? exitBy.get(visitor_id) : undefined;
+        const stripeCountry = l.country ? undefined : fallback.get(l.id);
         return {
           ...l,
+          // country_source: 'ip' (geoip al apuntarse) o 'stripe' (respaldo del CRM / pedido beta).
+          country: l.country ?? stripeCountry ?? null,
+          country_source: l.country ? 'ip' : stripeCountry ? 'stripe' : null,
           first_visit: first
             ? {
                 created_at: first.created_at,
