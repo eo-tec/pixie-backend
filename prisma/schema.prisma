@@ -775,3 +775,42 @@ model ad_spend {
   @@index([date])
   @@schema("public")
 }
+
+// ---------------------------------------------------------------------------
+// Lista de tareas compartida de Álvaro y del puesto de mando (antes
+// campaign/TAREAS.md). Pantalla /admin/tareas de la landing.
+// ---------------------------------------------------------------------------
+
+enum TaskOwner {
+  alvaro
+  agente
+
+  @@schema("public")
+}
+
+enum TaskStatus {
+  pending
+  done
+
+  @@schema("public")
+}
+
+model tasks {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @updatedAt @db.Timestamptz(6)
+  title      String
+  /// Para cuándo (día, sin hora). NULL = sin fecha
+  due_date   DateTime?  @db.Date
+  /// Plazo que no es una fecha, p. ej. «cada lunes»
+  due_text   String?
+  owner      TaskOwner  @default(alvaro)
+  /// De dónde sale: «Telegram 12 nov», «email del 16 nov», «DECISIONES 6 nov»...
+  origin     String?
+  status     TaskStatus @default(pending)
+  done_at    DateTime?  @db.Timestamptz(6)
+  notes      String?
+
+  @@index([status, due_date])
+  @@schema("public")
+}

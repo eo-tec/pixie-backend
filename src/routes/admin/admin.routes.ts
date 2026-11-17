@@ -75,3 +75,9 @@ adminRouter.put('/crm/versions/:id/bom', crm.setBom);
 // Gasto diario en anuncios (Meta) por anuncio: lo sube un agente cada mañana
 adminRouter.get('/crm/ad-spend', crm.getAdSpend);
 adminRouter.put('/crm/ad-spend', crm.putAdSpend);
+
+// Lista de tareas de Álvaro y del puesto de mando (antes campaign/TAREAS.md)
+adminRouter.get('/crm/tasks', crm.listTasks);
+adminRouter.post('/crm/tasks', crm.createTask);
+adminRouter.patch('/crm/tasks/:id', crm.updateTask);
+adminRouter.delete('/crm/tasks/:id', crm.deleteTask);

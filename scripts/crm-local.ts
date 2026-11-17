@@ -28,6 +28,10 @@ if (!['localhost', '127.0.0.1'].includes(host)) {
   process.exit(1);
 }
 process.env.ADMIN_API_KEY ||= 'local-dev-key';
+// src/config crea el cliente de Supabase al importarse y falla sin URL (en un
+// worktree sin .env). Aquí no se usa.
+process.env.SUPABASE_URL ||= 'http://localhost:1';
+process.env.SUPABASE_KEY ||= 'local';
 
 // Después de comprobar la URL: prisma lee DATABASE_URL al importarse.
 // eslint-disable-next-line @typescript-eslint/no-var-requires

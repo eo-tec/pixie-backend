@@ -673,3 +673,127 @@ export const getAdSpend = handle(async (req) => {
     rows: rows.map((r) => ({ ...r, date: r.date.toISOString().slice(0, 10) })),
   };
 });
+
+// ---------------------------------------------------------------------------
+// Tareas: lista compartida de Álvaro y del puesto de mando (antes
+// campaign/TAREAS.md). La pantalla es /admin/tareas de la landing; el puesto
+// de mando la lee y escribe por estos mismos endpoints.
+// ---------------------------------------------------------------------------
+
+const TASK_OWNERS = ['alvaro', 'agente'] as const;
+const TASK_STATUSES = ['pending', 'done'] as const;
+type TaskOwner = (typeof TASK_OWNERS)[number];
+type TaskStatus = (typeof TASK_STATUSES)[number];
+
+const isOwner = (v: unknown): v is TaskOwner => typeof v === 'string' && (TASK_OWNERS as readonly string[]).includes(v);
+const isTaskStatus = (v: unknown): v is TaskStatus => typeof v === 'string' && (TASK_STATUSES as readonly string[]).includes(v);
+
+/** due_date como día (YYYY-MM-DD) para que la web no tenga que pelear con zonas horarias. */
+function taskOut<T extends { due_date: Date | null }>(t: T) {
+  return { ...t, due_date: t.due_date ? t.due_date.toISOString().slice(0, 10) : null };
+}
+
+/**
+ * Valida el body de crear/editar una tarea. Solo devuelve los campos que
+ * vienen (undefined = no tocar). due_date: 'YYYY-MM-DD' o null; owner:
+ * 'alvaro' | 'agente'; status: 'pending' | 'done'; done_at: fecha ISO o null.
+ */
+function parseTask(body: any) {
+  const data: Prisma.tasksUncheckedUpdateInput = {};
+  if (!body || typeof body !== 'object') return data;
+  if ('title' in body) {
+    const t = str(body.title, 1000);
+    if (!t) throw new CrmError(400, 'La tarea necesita un título');
+    data.title = t;
+  }
+  if ('due_date' in body) {
+    if (body.due_date === null || body.due_date === '') data.due_date = null;
+    else {
+      const d = day(body.due_date);
+      if (!d) throw new CrmError(400, 'due_date tiene que ser YYYY-MM-DD o null');
+      data.due_date = d;
+    }
+  }
+  if ('due_text' in body) data.due_text = str(body.due_text, 100) ?? null;
+  if ('owner' in body) {
+    if (!isOwner(body.owner)) throw new CrmError(400, `owner tiene que ser ${TASK_OWNERS.join(' o ')}`);
+    data.owner = body.owner;
+  }
+  if ('origin' in body) data.origin = str(body.origin, 300) ?? null;
+  if ('notes' in body) data.notes = str(body.notes, 5000) ?? null;
+  if ('status' in body) {
+    if (!isTaskStatus(body.status)) throw new CrmError(400, `status tiene que ser ${TASK_STATUSES.join(' o ')}`);
+    data.status = body.status;
+  }
+  if ('done_at' in body) {
+    const d = date(body.done_at);
+    if (d === undefined) throw new CrmError(400, 'done_at tiene que ser una fecha o null');
+    data.done_at = d;
+  }
+  return data;
+}
+
+/**
+ * GET /admin/crm/tasks?status=pending|done|all&owner=alvaro|agente
+ * Pendientes por fecha (las sin fecha al final); hechas, la más reciente primero.
+ * Por defecto, todas.
+ */
+export const listTasks = handle(async (req) => {
+  const status = str(req.query.status, 10) ?? 'all';
+  if (status !== 'all' && !isTaskStatus(status)) throw new CrmError(400, 'status tiene que ser pending, done o all');
+  const owner = str(req.query.owner, 10);
+  if (owner && !isOwner(owner)) throw new CrmError(400, `owner tiene que ser ${TASK_OWNERS.join(' o ')}`);
+  const where: Prisma.tasksWhereInput = owner ? { owner: owner as TaskOwner } : {};
+  const [pending, done] = await Promise.all([
+    status === 'done'
+      ? []
+      : prisma.tasks.findMany({
+          where: { ...where, status: 'pending' },
+          orderBy: [{ due_date: { sort: 'asc', nulls: 'last' } }, { created_at: 'asc' }, { id: 'asc' }],
+        }),
+    status === 'pending'
+      ? []
+      : prisma.tasks.findMany({
+          where: { ...where, status: 'done' },
+          orderBy: [{ done_at: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        }),
+  ]);
+  return { owners: TASK_OWNERS, tasks: [...pending, ...done].map(taskOut) };
+});
+
+/** POST /admin/crm/tasks { title, due_date?, due_text?, owner?, origin?, notes?, status?, done_at? } */
+export const createTask = handle(async (req, res) => {
+  const data = parseTask(req.body);
+  if (!data.title) throw new CrmError(400, 'La tarea necesita un título');
+  // Hecha sin fecha de cierre: ahora.
+  if (data.status === 'done' && !data.done_at) data.done_at = new Date();
+  if (data.status !== 'done') data.done_at = null;
+  const task = await prisma.tasks.create({ data: data as Prisma.tasksUncheckedCreateInput });
+  res.status(201);
+  return { task: taskOut(task) };
+});
+
+/**
+ * PATCH /admin/crm/tasks/:id (los mismos campos). Pasar a «done» pone done_at
+ * a ahora si no viene; volver a «pending» lo borra.
+ */
+export const updateTask = handle(async (req) => {
+  const taskId = id(req);
+  const data = parseTask(req.body);
+  if (data.status === 'done' && data.done_at === undefined) {
+    const prev = await prisma.tasks.findUnique({ where: { id: taskId }, select: { status: true, done_at: true } });
+    if (!prev) throw new CrmError(404, 'Esa tarea no existe');
+    if (prev.status !== 'done' || !prev.done_at) data.done_at = new Date();
+  }
+  if (data.status === 'pending') data.done_at = null;
+  const task = await prisma.tasks.update({ where: { id: taskId }, data }); // P2025 → 404 en handle()
+  return { task: taskOut(task) };
+});
+
+/** DELETE /admin/crm/tasks/:id */
+export const deleteTask = handle(async (req) => {
+  const taskId = id(req);
+  const { count } = await prisma.tasks.deleteMany({ where: { id: taskId } });
+  if (!count) throw new CrmError(404, 'Esa tarea no existe');
+  return { ok: true };
+});
