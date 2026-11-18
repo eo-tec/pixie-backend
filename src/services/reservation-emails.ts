@@ -44,16 +44,14 @@ export function reservationTicketEmail(r: ReservationForEmail): Mail {
   const locale = localeForLang(r.lang);
   const amount = formatAmount(r.amount_cents, r.currency, locale);
   const date = formatDate(r.reserved_at, locale);
-  const ofTotal = r.spot <= FOUNDERS_SPOTS;
 
   if (locale === 'es') {
     return {
       to: r.email,
-      subject: `Tu plaza Founder #${r.spot} está confirmada`,
+      subject: 'Tu plaza Founder está confirmada',
       text:
         'Hola,\n\n' +
         'Gracias por reservar tu plaza Founder de Frame. Ya está confirmada, y que confíes en Frame antes de la campaña significa mucho para mí.\n\n' +
-        `Plaza Founder: #${r.spot}${ofTotal ? ` de ${FOUNDERS_SPOTS}` : ''}\n` +
         `Fecha: ${date}\n` +
         `Importe: ${amount}\n` +
         `Referencia de pago: ${r.reference}\n\n` +
@@ -65,11 +63,10 @@ export function reservationTicketEmail(r: ReservationForEmail): Mail {
 
   return {
     to: r.email,
-    subject: `Your Founders spot #${r.spot} is confirmed`,
+    subject: 'Your Founders spot is confirmed',
     text:
       'Hi,\n\n' +
       "Thank you for reserving a Founders spot for Frame. It's confirmed, and the fact that you trust Frame before the campaign even starts means a lot to me.\n\n" +
-      `Founders spot: #${r.spot}${ofTotal ? ` of ${FOUNDERS_SPOTS}` : ''}\n` +
       `Date: ${date}\n` +
       `Amount: ${amount}\n` +
       `Payment reference: ${r.reference}\n\n` +
