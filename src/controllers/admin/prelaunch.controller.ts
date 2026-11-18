@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../../services/prisma';
 import { countryFromIp } from '../../services/geoip';
+import { sendMail } from '../../services/mail.service';
+import { FOUNDERS_SPOT_CENTS, reservationTicketEmail } from '../../services/reservation-emails';
 
 // Validación de demanda tipo Prelaunch.com. La landing (frame64.fun) es la
 // única que llama aquí, desde su servidor y con la clave de admin, después
@@ -248,11 +250,75 @@ export async function recordReservation(req: Request, res: Response) {
       res.status(404).json({ error: 'lead not found' });
       return;
     }
-    await prisma.prelaunch_leads.update({ where: { id: lead.id }, data });
+    // Se reclama la sesión en la misma escritura: si dos reintentos de Stripe
+    // llegan a la vez, solo uno la apunta y solo ese manda el email.
+    const claimed = await prisma.prelaunch_leads.updateMany({
+      where: {
+        id: lead.id,
+        OR: [{ stripe_session_id: null }, { stripe_session_id: { not: sessionId } }],
+      },
+      data,
+    });
+    if (claimed.count === 0) {
+      res.json({ ok: true, duplicate: true });
+      return;
+    }
     res.json({ ok: true });
+    // Después de responder: el email no retrasa ni hace fallar la reserva.
+    void sendReservationTicket(lead.id, sessionId);
   } catch (err) {
     console.error('[prelaunch] reservation', err);
     res.status(500).json({ error: 'internal' });
+  }
+}
+
+/**
+ * Email de confirmación («ticket») de la plaza Founder. Solo para la reserva
+ * de 1 € (las de 5 € anteriores al 17 nov no son plazas Founder). La plaza es
+ * la posición por reserved_at entre las reservas Founder no reembolsadas. Si
+ * falla, queda en el log y la reserva sigue registrada.
+ */
+async function sendReservationTicket(leadId: number, sessionId: string): Promise<void> {
+  try {
+    const lead = await prisma.prelaunch_leads.findUnique({
+      where: { id: leadId },
+      select: {
+        email: true,
+        lang: true,
+        reserved_at: true,
+        refunded_at: true,
+        amount_cents: true,
+        currency: true,
+        stripe_session_id: true,
+        stripe_payment_id: true,
+      },
+    });
+    if (!lead?.reserved_at || lead.refunded_at || lead.stripe_session_id !== sessionId) return;
+    if (lead.amount_cents !== FOUNDERS_SPOT_CENTS || !lead.currency) {
+      console.log(`[prelaunch] ticket skipped for lead ${leadId}: amount ${lead.amount_cents} ${lead.currency}`);
+      return;
+    }
+    const spot = await prisma.prelaunch_leads.count({
+      where: {
+        amount_cents: FOUNDERS_SPOT_CENTS,
+        refunded_at: null,
+        reserved_at: { not: null, lte: lead.reserved_at },
+      },
+    });
+    await sendMail(
+      reservationTicketEmail({
+        email: lead.email,
+        lang: lead.lang,
+        spot,
+        reserved_at: lead.reserved_at,
+        amount_cents: lead.amount_cents,
+        currency: lead.currency,
+        reference: lead.stripe_payment_id ?? sessionId,
+      }),
+    );
+    console.log(`[prelaunch] ticket sent to lead ${leadId} (spot #${spot})`);
+  } catch (err) {
+    console.error(`[prelaunch] ticket email failed for lead ${leadId}`, err);
   }
 }
 
