@@ -15,7 +15,7 @@ import { pixiesRouter } from './pixies.routes';
 import { reactionsRouter } from './reactions.routes';
 import { commentsRouter } from './comments.routes';
 import { playlistRouter } from './playlist.routes';
-import { downloadFile, statFile, getPartialFile } from '../../minio/minio';
+import { downloadFile, statFile, getPartialFile, sendStream } from '../../minio/minio';
 import prisma from '../../services/prisma';
 
 export const privateRouter = Router();
@@ -160,14 +160,14 @@ privateRouter.get('/photo/file/*', async (req: AuthenticatedRequest, res: Respon
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Length', chunkSize);
       res.setHeader('Content-Type', contentType);
-      stream.pipe(res);
+      sendStream(stream, res);
     } else {
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', totalSize);
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'private, max-age=86400');
       const stream = await downloadFile(filePath);
-      stream.pipe(res);
+      sendStream(stream, res);
     }
   } catch (err) {
     res.status(404).send('File not found');

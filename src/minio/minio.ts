@@ -1,5 +1,7 @@
 import { Client } from "minio";
 import * as mime from "mime-types";
+import { pipeline, type Readable } from "stream";
+import type { Response } from "express";
 
 const publicUrl = process.env.MINIO_PUBLIC_URL || "bucket.mypixelframe.com";
 
@@ -85,6 +87,22 @@ export const getPartialFile = async (fileName: string, offset: number, length: n
     offset,
     length
   );
+};
+
+/**
+ * Send a Minio download to an HTTP response and close the Minio connection
+ * whatever happens. With a bare stream.pipe(res), if the app aborts the
+ * download halfway (very common with video range requests) the Minio stream
+ * stays open forever: its data piles up unread in the kernel, the server runs
+ * out of TCP memory and starts dropping packets, and the database pool times
+ * out (incident of 21 nov 2026: 211 open Minio sockets, 321 MB unread).
+ */
+export const sendStream = (stream: Readable, res: Response) => {
+  pipeline(stream, res, (err) => {
+    if (err && (err as NodeJS.ErrnoException).code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      console.error("[minio] Error enviando fichero:", err.message);
+    }
+  });
 };
 
 export const checkFile = async (fileName: string) => {

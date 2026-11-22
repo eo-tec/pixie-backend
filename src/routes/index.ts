@@ -4,7 +4,7 @@ import { publicRouter } from './public/public.routes';
 import { privateRouter } from "./private/private.routes";
 import { guessRouter } from './guess/guess.routes';
 import { adminRouter } from './admin/admin.routes';
-import { downloadFile, statFile, getPartialFile } from '../minio/minio';
+import { downloadFile, statFile, getPartialFile, sendStream } from '../minio/minio';
 // Otras rutas que tengas
 
 export const mainRouter = Router();
@@ -44,14 +44,14 @@ if (process.env.NODE_ENV === 'development') {
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Length', chunkSize);
         res.setHeader('Content-Type', contentType);
-        stream.pipe(res);
+        sendStream(stream, res);
       } else {
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', totalSize);
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Cache-Control', 'no-cache');
         const stream = await downloadFile(filePath);
-        stream.pipe(res);
+        sendStream(stream, res);
       }
     } catch (err) {
       res.status(404).send('File not found');
@@ -68,7 +68,7 @@ mainRouter.get('/api/photo/file/profile-pictures/*', async (req: Request, res: R
     const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    stream.pipe(res);
+    sendStream(stream, res);
   } catch (err) {
     res.status(404).send('File not found');
   }
