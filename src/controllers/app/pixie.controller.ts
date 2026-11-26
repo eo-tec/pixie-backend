@@ -1,3 +1,4 @@
+import { ownerTimezoneOffset } from '../../utils/timezone';
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
@@ -306,7 +307,7 @@ export const setPixie = async (req: AuthenticatedRequest, res: Response) => {
       show_title: updatedPixie.show_title ?? true,
       show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
-      timezone_offset: user?.timezone_offset ?? 0,
+      timezone_offset: ownerTimezoneOffset(user),
       has_owner: !!updatedPixie.created_by
     }));
 
@@ -416,7 +417,7 @@ export const activatePixie = async (req: AuthenticatedRequest, res: Response) =>
       show_title: updatedPixie.show_title ?? true,
       show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
-      timezone_offset: user?.timezone_offset ?? 0,
+      timezone_offset: ownerTimezoneOffset(user),
       has_owner: true
     }));
 
@@ -549,7 +550,7 @@ export const registerFrameWithUser = async (req: AuthenticatedRequest, res: Resp
       show_title: updatedPixie.show_title ?? true,
       show_sender: updatedPixie.show_sender ?? true,
       reveal_style: updatedPixie.reveal_style,
-      timezone_offset: user?.timezone_offset ?? 0,
+      timezone_offset: ownerTimezoneOffset(user),
       has_owner: true
     }));
 

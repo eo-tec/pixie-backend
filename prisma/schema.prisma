@@ -247,6 +247,11 @@ model public_users {
   bio                     String?
   user_id                 String?                  @unique
   timezone_offset         Int?                     @default(0)
+  /// Zona IANA del móvil (p. ej. "Europe/Madrid"). Si está, timezone_offset se
+  /// recalcula con ella cada hora (cambio de hora de verano) y se manda a los frames.
+  timezone                String?
+  /// true = el usuario fijó un desfase a mano en Ajustes; la app no lo pisa.
+  timezone_manual         Boolean                  @default(false)
   /// Idioma para los textos que compone el servidor (push). El cliente lo
   /// sincroniza al iniciar sesion; una notificacion se muestra con la app
   /// cerrada, asi que no puede traducirse en el dispositivo.

@@ -5,6 +5,7 @@ import { PORT } from './config';
 import { initTelegramBot } from './telegram/bot';
 import bodyParser from 'body-parser';
 import { connectMQTT } from './mqtt/client';
+import { startTimezoneSync } from './services/timezone-sync';
 import { createServer } from 'https'
 import { createServer as createHttpServer } from 'http'
 import fs from 'fs';
@@ -100,3 +101,4 @@ if (useHTTPS) {
 initDrawingSocket(io);
 
 connectMQTT();
+startTimezoneSync();

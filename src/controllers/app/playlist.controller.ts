@@ -1,3 +1,4 @@
+import { ownerTimezoneOffset } from '../../utils/timezone';
 import { Response } from "express";
 import { AuthenticatedRequest } from "../../routes/private/checkUser";
 import prisma from '../../services/prisma';
@@ -32,7 +33,7 @@ async function notifyFramePlaylistChanged(pixieId: number) {
     show_title: pixie.show_title ?? true,
     show_sender: pixie.show_sender ?? true,
     reveal_style: pixie.reveal_style,
-    timezone_offset: pixie.users?.timezone_offset ?? 0,
+    timezone_offset: ownerTimezoneOffset(pixie.users),
     has_owner: pixie.created_by !== null,
   }));
 }
@@ -180,7 +181,7 @@ export const updatePlaylist = async (req: AuthenticatedRequest, res: Response) =
       show_title: updatedPixie?.show_title ?? true,
       show_sender: updatedPixie?.show_sender ?? true,
       reveal_style: updatedPixie?.reveal_style ?? DEFAULT_REVEAL_STYLE,
-      timezone_offset: user?.timezone_offset ?? 0,
+      timezone_offset: ownerTimezoneOffset(user),
     }));
 
     const newItems = await prisma.playlist_items.findMany({

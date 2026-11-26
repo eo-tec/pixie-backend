@@ -4,6 +4,8 @@ import prisma from '../../services/prisma';
 import { uploadFile, deleteFile } from '../../minio/minio';
 import { deleteSupabaseUser } from '../../auth/supabase.auth';
 import sharp from 'sharp';
+import { isValidTimezone, offsetMinutesFor } from '../../utils/timezone';
+import { pushTimezoneToUserFrames } from '../../services/timezone-sync';
 
 async function getUser(req: AuthenticatedRequest, res: Response) {
     const id = req.user?.id;
@@ -34,6 +36,8 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
             bio: user.bio,
             spotify_id: user.spotify_credentials ? user.spotify_credentials.spotify_id : null,
             timezone_offset: user.timezone_offset ?? 0,
+            timezone: user.timezone,
+            timezone_manual: user.timezone_manual,
             language: user.language ?? 'en',
             notification_prefs: user.notification_prefs,
             accepted_terms_at: user.accepted_terms_at,
@@ -41,6 +45,13 @@ async function getUser(req: AuthenticatedRequest, res: Response) {
     });
 }
 
+// Dos formas de llamarlo:
+//   * { timezone: "Europe/Madrid" }  -> la app lo manda sola con la zona del
+//     móvil. El desfase se calcula aquí y sigue el horario de verano.
+//   * { timezone_offset: 60 }       -> el usuario eligió un desfase fijo en
+//     Ajustes. Se marca como manual y la app deja de sincronizar el móvil.
+//     { timezone_offset, timezone_manual: false } vuelve a modo automático.
+// En los dos casos se manda el desfase nuevo a sus frames al momento.
 async function updateTimezone(req: AuthenticatedRequest, res: Response) {
     const id = req.user?.id;
     if (!id) {
@@ -48,29 +59,43 @@ async function updateTimezone(req: AuthenticatedRequest, res: Response) {
         return;
     }
 
-    const { timezone_offset } = req.body;
+    const { timezone, timezone_offset, timezone_manual } = req.body ?? {};
+    let data: { timezone?: string; timezone_offset: number; timezone_manual: boolean };
 
-    if (typeof timezone_offset !== 'number') {
-        res.status(400).json({ error: 'timezone_offset debe ser un número' });
-        return;
-    }
-
-    // Validar que el offset esté en un rango razonable (-720 a +840 minutos)
-    if (timezone_offset < -720 || timezone_offset > 840) {
-        res.status(400).json({ error: 'timezone_offset fuera de rango válido' });
-        return;
+    if (timezone !== undefined) {
+        if (!isValidTimezone(timezone)) {
+            res.status(400).json({ error: 'timezone no es una zona IANA válida' });
+            return;
+        }
+        data = { timezone, timezone_offset: offsetMinutesFor(timezone), timezone_manual: false };
+    } else {
+        if (typeof timezone_offset !== 'number' || !Number.isInteger(timezone_offset)) {
+            res.status(400).json({ error: 'timezone_offset debe ser un número' });
+            return;
+        }
+        // Validar que el offset esté en un rango razonable (-720 a +840 minutos)
+        if (timezone_offset < -720 || timezone_offset > 840) {
+            res.status(400).json({ error: 'timezone_offset fuera de rango válido' });
+            return;
+        }
+        data = { timezone_offset, timezone_manual: timezone_manual !== false };
     }
 
     try {
         const updatedUser = await prisma.public_users.update({
             where: { id },
-            data: { timezone_offset }
+            data
         });
+
+        const offset = updatedUser.timezone_offset ?? 0;
+        await pushTimezoneToUserFrames(id, offset);
 
         res.status(200).json({
             user: {
                 id: updatedUser.id,
-                timezone_offset: updatedUser.timezone_offset
+                timezone_offset: offset,
+                timezone: updatedUser.timezone,
+                timezone_manual: updatedUser.timezone_manual
             }
         });
     } catch (error) {

@@ -1,6 +1,7 @@
 // src/mqtt/handlers.ts
 // Handlers para requests MQTT del ESP32
 
+import { ownerTimezoneOffset } from '../utils/timezone';
 import { randomBytes } from 'crypto';
 import sharp from 'sharp';
 import SpotifyWebApi from 'spotify-web-api-node';
@@ -850,7 +851,7 @@ export async function handleConfigRequest(pixieId: number): Promise<void> {
       show_title: pixie.show_title ?? true,
       show_sender: pixie.show_sender ?? true,
       reveal_style: pixie.reveal_style,
-      timezone_offset: pixie.users?.timezone_offset ?? 0,
+      timezone_offset: ownerTimezoneOffset(pixie.users),
       has_owner: pixie.created_by !== null
     });
 
