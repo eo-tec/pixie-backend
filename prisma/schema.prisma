@@ -167,6 +167,41 @@ model boot_events {
   @@schema("public")
 }
 
+// Telemetría del asistente de instalación de la app (alta de un frame por
+// Bluetooth + WiFi). Una fila por paso de cada intento; attempt_id agrupa los
+// pasos de una misma pasada por el asistente. Sin SSID ni contraseña: solo
+// metadatos de la red. Sin FK a propósito: es telemetría y no debe bloquear
+// borrados de usuarios o frames. Retención: purga diaria a los 90 días
+// (src/controllers/app/setupEvents.controller.ts).
+model setup_events {
+  id            Int       @id @default(autoincrement())
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  client_ts     DateTime? @db.Timestamptz(6)
+  attempt_id    String
+  user_id       Int?
+  mac           String?
+  pixie_id      Int?
+  mode          String?
+  step          String
+  outcome       String
+  error_code    String?
+  error_message String?
+  duration_ms   Int?
+  platform      String?
+  os_version    String?
+  app_version   String?
+  update_id     String?
+  wifi_rssi     Int?
+  wifi_secure   Boolean?
+  wifi_manual   Boolean?
+  wifi_pass_len Int?
+
+  @@index([created_at])
+  @@index([attempt_id])
+  @@index([mac, created_at])
+  @@schema("public")
+}
+
 model playlist_items {
   id         Int      @id @default(autoincrement())
   pixie_id   Int

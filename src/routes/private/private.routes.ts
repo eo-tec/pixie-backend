@@ -7,6 +7,7 @@ import { getUser, getFriends, updateProfile, updateTimezone, updateLanguage, upd
 import { blockUser, unblockUser, getBlockedUsers } from '../../controllers/app/blocks.controller';
 import { createReport } from '../../controllers/app/reports.controller';
 import { registerPushToken, deletePushToken } from '../../controllers/app/pushTokens.controller';
+import { postSetupEvents } from '../../controllers/app/setupEvents.controller';
 import { getPixies, setPixie, showPhoto, activatePixie, resetPixie } from '../../controllers/app/pixie.controller';
 import { friendsRouter } from './friends.routes';
 import { usersRouter } from './users.routes';
@@ -53,6 +54,9 @@ privateRouter.post('/report', createReport);
 // Expo rotan) y lo borra al cerrar sesion.
 privateRouter.post('/push-token', registerPushToken);
 privateRouter.delete('/push-token', deletePushToken);
+
+// Telemetría del asistente de instalación (alta de frames por Bluetooth)
+privateRouter.post('/setup-events', postSetupEvents);
 //privateRouter.get('/friends', getFriends);
 
 privateRouter.get('/pixie/photo/:id', showPhoto);
